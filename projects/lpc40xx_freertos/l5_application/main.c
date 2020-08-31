@@ -95,6 +95,6 @@ static void uart_task(void *params) {
      */
     ticks = xTaskGetTickCount();
     printf("This is a more efficient printf ... finished in");
-    printf(" %lu ticks\n\n", (xTaskGetTickCount() - ticks));
+    printf(" %lu ticks.\n\n", (xTaskGetTickCount() - ticks));
   }
 }
