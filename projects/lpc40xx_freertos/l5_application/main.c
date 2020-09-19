@@ -6,27 +6,78 @@
 #include "board_io.h"
 #include "common_macros.h"
 #include "gpio.h"
-#include "lpc40xx.h"
 #include "periodic_scheduler.h"
 #include "sj2_cli.h"
+
+#include "lpc40xx.h"
+#include "lpc_peripherals.h"
+#include "semphr.h"
 
 static void create_blinky_tasks(void);
 static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
 
+void gpio_interrupt(void);
+static void clear_gpio_interrupt(void);
+static void configure_your_gpio_interrupt(void);
+static void sleep_on_sem_task(void *p);
+
+static SemaphoreHandle_t switch_pressed_signal;
+
 void gpio_interrupt(void) {
+  clear_gpio_interrupt();
+  xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
+
+  // fprintf(stderr, "Interrupt is hit\n");
+  /****************** PART0:SimpleInterrupt *******************************************
   gpio_s port1_pin8 = gpio__construct(GPIO__PORT_1, 8);
+  gpio__set_as_output(port1_pin8);
   // a) Clear Port0/2 interrupt using CLR0 or CLR2 registers
-  LPC_GPIOINT->IO0IntClr &= ~(1 << 29);
+  LPC_GPIOINT->IO0IntClr |= (1 << 29);
   // b) Use fprintf(stderr) or blink and LED here to test your ISR
   // fprintf(stderr, "Interrupt is hit");
   gpio__reset(port1_pin8);
+  ****************** PART0:SimpleInterrupt *******************************************/
+}
+static void clear_gpio_interrupt(void) { LPC_GPIOINT->IO0IntClr |= (1 << 29); }
+static void configure_your_gpio_interrupt(void) {
+  gpio_s port0_pin29 = gpio__construct(GPIO__PORT_0, 29);
+  gpio__set_as_input(port0_pin29);
+  LPC_GPIOINT->IO0IntEnR |= (1 << 29);
 }
 
+void sleep_on_sem_task(void *p) {
+  gpio_s port1_pin8 = gpio__construct(GPIO__PORT_1, 8);
+  gpio__set_as_output(port1_pin8);
+
+  while (true) {
+    // Note: There is no vTaskDelay() here, but we use sleep mechanism while waiting for the binary semaphore (signal)
+    if (xSemaphoreTake(switch_pressed_signal, portMAX_DELAY)) {
+      while (true) {
+        gpio__set(port1_pin8);
+        // fprintf(stderr, "ON\n");
+        vTaskDelay(250);
+
+        gpio__reset(port1_pin8);
+        // fprintf(stderr, "OFF\n");
+        vTaskDelay(250);
+      }
+    } else {
+    }
+  }
+}
 int main(void) {
   create_blinky_tasks();
   create_uart_task();
+
+  switch_pressed_signal = xSemaphoreCreateBinary(); // Create your binary semaphore
+  lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__GPIO, gpio_interrupt, "gpio_intr");
+  configure_your_gpio_interrupt(); // TODO: Setup interrupt by re-using code from Part 0
+  NVIC_EnableIRQ(GPIO_IRQn);       // Enable interrupt gate for the GPIO
+
+  xTaskCreate(sleep_on_sem_task, "sem", (512U * 4) / sizeof(void *), NULL, PRIORITY_LOW, NULL);
+  /****************** PART0:SimpleInterrupt *******************************************
   gpio_s port0_pin29 = gpio__construct(GPIO__PORT_0, 29);
   gpio_s port1_pin8 = gpio__construct(GPIO__PORT_1, 8);
   gpio__set_as_output(port1_pin8);
@@ -38,7 +89,8 @@ int main(void) {
   LPC_GPIOINT->IO0IntEnR |= (1 << 29);
   // Install GPIO interrupt function at the CPU interrupt (exception) vector
   // c) Hijack the interrupt vector at interrupt_vector_table.c and have it call our gpio_interrupt()
-  //    Hint: You can declare 'void gpio_interrupt(void)' at interrupt_vector_table.c such that it can see this function
+  //    Hint: You can declare 'void gpio_interrupt(void)' at interrupt_vector_table.c such that it can see this
+  function
 
   // Most important step: Enable the GPIO interrupt exception using the ARM Cortex M API (this is from lpc40xx.h)
   NVIC_EnableIRQ(GPIO_IRQn);
@@ -50,6 +102,8 @@ int main(void) {
     // TODO: Toggle an LED here
     gpio__set(port1_pin8);
   }
+  ****************** PART0:SimpleInterrupt End *******************************************/
+
   puts("Starting RTOS");
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
