@@ -24,6 +24,7 @@ extern void lpc_peripheral__interrupt_dispatcher(void);
 
 static void halt(void);
 static void isr_hard_fault(void);
+void gpio_interrupt(void);
 
 /**
  * This is non static otherwise compiler optimizes this function away but it is used in assembly code
@@ -93,7 +94,7 @@ __attribute__((section(".interrupt_vector_table"))) const function__void_f inter
     lpc_peripheral__interrupt_dispatcher, // 51 UART 4
     lpc_peripheral__interrupt_dispatcher, // 52 SSP 2
     lpc_peripheral__interrupt_dispatcher, // 53 LCD
-    lpc_peripheral__interrupt_dispatcher, // 54 GPIO Interrupt
+    gpio_interrupt,                       // 54 GPIO Interrupt
     lpc_peripheral__interrupt_dispatcher, // 55 PWM 0
     lpc_peripheral__interrupt_dispatcher, // 56 EEPROM
 };

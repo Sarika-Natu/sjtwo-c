@@ -6,6 +6,7 @@
 #include "board_io.h"
 #include "common_macros.h"
 #include "gpio.h"
+#include "lpc40xx.h"
 #include "periodic_scheduler.h"
 #include "sj2_cli.h"
 
@@ -14,10 +15,41 @@ static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
 
+void gpio_interrupt(void) {
+  gpio_s port1_pin8 = gpio__construct(GPIO__PORT_1, 8);
+  // a) Clear Port0/2 interrupt using CLR0 or CLR2 registers
+  LPC_GPIOINT->IO0IntClr &= ~(1 << 29);
+  // b) Use fprintf(stderr) or blink and LED here to test your ISR
+  // fprintf(stderr, "Interrupt is hit");
+  gpio__reset(port1_pin8);
+}
+
 int main(void) {
   create_blinky_tasks();
   create_uart_task();
+  gpio_s port0_pin29 = gpio__construct(GPIO__PORT_0, 29);
+  gpio_s port1_pin8 = gpio__construct(GPIO__PORT_1, 8);
+  gpio__set_as_output(port1_pin8);
+  // Read Table 95 in the LPC user manual and setup an interrupt on a switch connected to Port0 or Port2
+  // a) For example, choose SW2 (P0_30) pin on SJ2 board and configure as input
+  gpio__set_as_input(port0_pin29);
+  //.   Warning: P0.30, and P0.31 require pull-down resistors
+  // b) Configure the registers to trigger Port0 interrupt (such as falling edge)
+  LPC_GPIOINT->IO0IntEnR |= (1 << 29);
+  // Install GPIO interrupt function at the CPU interrupt (exception) vector
+  // c) Hijack the interrupt vector at interrupt_vector_table.c and have it call our gpio_interrupt()
+  //    Hint: You can declare 'void gpio_interrupt(void)' at interrupt_vector_table.c such that it can see this function
 
+  // Most important step: Enable the GPIO interrupt exception using the ARM Cortex M API (this is from lpc40xx.h)
+  NVIC_EnableIRQ(GPIO_IRQn);
+
+  // Toggle an LED in a loop to ensure/test that the interrupt is entering ane exiting
+  // For example, if the GPIO interrupt gets stuck, this LED will stop blinking
+  while (1) {
+    delay__ms(100);
+    // TODO: Toggle an LED here
+    gpio__set(port1_pin8);
+  }
   puts("Starting RTOS");
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
