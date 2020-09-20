@@ -9,7 +9,7 @@
 #include "periodic_scheduler.h"
 #include "sj2_cli.h"
 
-#include "lpc40xx.h"
+#include "gpio_isr.h"
 #include "lpc_peripherals.h"
 #include "semphr.h"
 
@@ -18,6 +18,22 @@ static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
 
+void pin30_isr(void);
+void pin29_isr(void);
+void sleep_on_sem_task(void *p);
+
+static SemaphoreHandle_t switch_pressed_signal;
+
+void port0pin30_isr(void) {
+  // fprintf(stderr, "Interrupt is hit 30\n");
+  xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
+}
+void port0pin29_isr(void) {
+  // fprintf(stderr, "Interrupt is hit 29\n");
+  xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
+}
+
+/****************** PART1:Interrupt with Binary Semaphore ****************************
 void gpio_interrupt(void);
 static void clear_gpio_interrupt(void);
 static void configure_your_gpio_interrupt(void);
@@ -30,7 +46,7 @@ void gpio_interrupt(void) {
   xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
 
   // fprintf(stderr, "Interrupt is hit\n");
-  /****************** PART0:SimpleInterrupt *******************************************
+  ****************** PART0:SimpleInterrupt *******************************************
   gpio_s port1_pin8 = gpio__construct(GPIO__PORT_1, 8);
   gpio__set_as_output(port1_pin8);
   // a) Clear Port0/2 interrupt using CLR0 or CLR2 registers
@@ -38,7 +54,7 @@ void gpio_interrupt(void) {
   // b) Use fprintf(stderr) or blink and LED here to test your ISR
   // fprintf(stderr, "Interrupt is hit");
   gpio__reset(port1_pin8);
-  ****************** PART0:SimpleInterrupt *******************************************/
+  ****************** PART0:SimpleInterrupt *******************************************
 }
 static void clear_gpio_interrupt(void) { LPC_GPIOINT->IO0IntClr |= (1 << 29); }
 static void configure_your_gpio_interrupt(void) {
@@ -46,37 +62,47 @@ static void configure_your_gpio_interrupt(void) {
   gpio__set_as_input(port0_pin29);
   LPC_GPIOINT->IO0IntEnR |= (1 << 29);
 }
-
+****************** PART1:Interrupt with Binary Semaphore ****************************/
 void sleep_on_sem_task(void *p) {
   gpio_s port1_pin8 = gpio__construct(GPIO__PORT_1, 8);
   gpio__set_as_output(port1_pin8);
-
+  // fprintf(stderr, "sleep_on_sem_task\n");
   while (true) {
     // Note: There is no vTaskDelay() here, but we use sleep mechanism while waiting for the binary semaphore (signal)
     if (xSemaphoreTake(switch_pressed_signal, portMAX_DELAY)) {
+      // fprintf(stderr, "Semaphore taken\n");
       while (true) {
         gpio__set(port1_pin8);
         // fprintf(stderr, "ON\n");
-        vTaskDelay(250);
+        vTaskDelay(500);
 
         gpio__reset(port1_pin8);
         // fprintf(stderr, "OFF\n");
-        vTaskDelay(250);
+        vTaskDelay(500);
       }
     } else {
     }
   }
 }
+
 int main(void) {
   create_blinky_tasks();
   create_uart_task();
 
   switch_pressed_signal = xSemaphoreCreateBinary(); // Create your binary semaphore
+  gpio__attach_interrupt(PORT0, 29, GPIO_INTR__RISING_EDGE, port0pin29_isr);
+  gpio__attach_interrupt(PORT0, 30, GPIO_INTR__FALLING_EDGE, port0pin30_isr);
+
+  lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__GPIO, gpio__interrupt_dispatcher, "gpio_intr");
+
+  /****************** PART1:Interrupt with Binary Semaphore ****************************
   lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__GPIO, gpio_interrupt, "gpio_intr");
-  configure_your_gpio_interrupt(); // TODO: Setup interrupt by re-using code from Part 0
-  NVIC_EnableIRQ(GPIO_IRQn);       // Enable interrupt gate for the GPIO
+   configure_your_gpio_interrupt(); // TODO: Setup interrupt by re-using code from Part 0
+   ****************** PART1:Interrupt with Binary Semaphore ****************************/
+  NVIC_EnableIRQ(GPIO_IRQn); // Enable interrupt gate for the GPIO
 
   xTaskCreate(sleep_on_sem_task, "sem", (512U * 4) / sizeof(void *), NULL, PRIORITY_LOW, NULL);
+
   /****************** PART0:SimpleInterrupt *******************************************
   gpio_s port0_pin29 = gpio__construct(GPIO__PORT_0, 29);
   gpio_s port1_pin8 = gpio__construct(GPIO__PORT_1, 8);
