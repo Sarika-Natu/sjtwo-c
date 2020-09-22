@@ -13,7 +13,7 @@ void gpio__interrupt_dispatcher(void);
  * This function clears the interrupt flag for the requested port-pin
  */
 static void clear_pin_interrupt(gpio__port_e port, int interrupt_pin) {
-  // fprintf(stderr, "Interrupt is cleared pin %d\n", pin_that_generated_interrupt);
+  fprintf(stderr, "Interrupt is cleared pin %d\n", interrupt_pin);
   if (GPIO__PORT_0 == port) {
     LPC_GPIOINT->IO0IntClr |= (1 << interrupt_pin);
   } else if (GPIO__PORT_2 == port) {

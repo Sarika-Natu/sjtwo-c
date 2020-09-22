@@ -31,23 +31,14 @@ void sleep_on_sem_task(void *p);
 void flashy_leds(void *task_parameter);
 
 static SemaphoreHandle_t switch_pressed_signal;
+static SemaphoreHandle_t switch_pressed_flashy;
 /*************************************************************************************
  * This ISR function is hit on the falling egde of SW2 to execute
  * user defined function
  */
 void user_isr(void) {
-  static port_pin_s flashy_led[4] = {{GPIO__PORT_2, 3}, {GPIO__PORT_1, 26}, {GPIO__PORT_1, 24}, {GPIO__PORT_1, 18}};
-
-  // fprintf(stderr, "Interrupt is hit 30\n");
-  for (u_int8_t index = 0; index < 4; index++) {
-    gpio_s port_pin = gpio__construct(port_leds[index].port, port_leds[index].pin);
-    gpio__set_as_output(port_pin);
-    gpio__reset(port_pin);
-    vTaskDelay(FLASHY_DELAY);
-    gpio__set(port_pin);
-    vTaskDelay(FLASHY_DELAY);
-    // puts("loop 1");
-  }
+  fprintf(stderr, "Interrupt is hit 30\n");
+  xSemaphoreGiveFromISR(switch_pressed_flashy, NULL);
 }
 /*************************************************************************************
  * This ISR function is hit to rising edge of SW3
@@ -111,6 +102,26 @@ void sleep_on_sem_task(void *p) {
   }
 }
 
+void sleep_on_flashy_task(void *p) {
+  port_pin_s *port_led = (port_pin_s *)p;
+
+  while (true) {
+    // Note: There is no vTaskDelay() here, but we use sleep mechanism while waiting for the binary semaphore (signal)
+    if (xSemaphoreTake(switch_pressed_flashy, portMAX_DELAY)) {
+      for (u_int8_t index = 0; index < 4; index++) {
+        gpio_s port_pin = gpio__construct(port_led[index].port, port_led[index].pin);
+        gpio__set_as_output(port_pin);
+        gpio__reset(port_pin);
+        vTaskDelay(FLASHY_DELAY);
+        gpio__set(port_pin);
+        vTaskDelay(FLASHY_DELAY);
+        // puts("loop 1");
+      }
+    } else {
+    }
+  }
+}
+
 int main(void) {
   // create_blinky_tasks();
   create_uart_task();
@@ -124,9 +135,16 @@ int main(void) {
     gpio__set(port_pin);
   }
 
+  u_int32_t *port_iocon_P2_1 = (uint32_t *)(0x4002C104);
+  *port_iocon_P2_1 = UINT32_C(0);
+  gpio_s port_pin = gpio__construct(GPIO__PORT_0, 29);
+  gpio__set_as_input(port_pin);
+  port_pin = gpio__construct(GPIO__PORT_2, 1);
+  gpio__set_as_input(port_pin);
   switch_pressed_signal = xSemaphoreCreateBinary(); // Create your binary semaphore
-  gpio__attach_interrupt(GPIO__PORT_0, 29, GPIO_INTR__RISING_EDGE, sem_isr);
-  gpio__attach_interrupt(GPIO__PORT_0, 30, GPIO_INTR__FALLING_EDGE, user_isr);
+  switch_pressed_flashy = xSemaphoreCreateBinary(); // Create your binary semaphore
+  gpio__attach_interrupt(GPIO__PORT_0, 29, GPIO_INTR__FALLING_EDGE, sem_isr);
+  gpio__attach_interrupt(GPIO__PORT_2, 1, GPIO_INTR__RISING_EDGE, user_isr);
 
   lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__GPIO, gpio__interrupt_dispatcher, "gpio_intr");
 
@@ -137,6 +155,7 @@ int main(void) {
   NVIC_EnableIRQ(GPIO_IRQn); // Enable interrupt gate for the GPIO
 
   xTaskCreate(sleep_on_sem_task, "sem", (512U * 4) / sizeof(void *), (void *)&port1_led8, PRIORITY_LOW, NULL);
+  xTaskCreate(sleep_on_flashy_task, "sem", (512U * 4) / sizeof(void *), (void *)&flashy_led, PRIORITY_LOW, NULL);
   /****************** PART0:SimpleInterrupt *******************************************
   gpio_s port0_pin29 = gpio__construct(GPIO__PORT_0, 29);
   gpio_s port1_pin8 = gpio__construct(GPIO__PORT_1, 8);

@@ -3,7 +3,7 @@
 
 #include "gpio.h"
 #include "lpc40xx.h"
-//#include <stdio.h>
+#include <stdio.h>
 typedef enum {
   GPIO_INTR__FALLING_EDGE,
   GPIO_INTR__RISING_EDGE,
