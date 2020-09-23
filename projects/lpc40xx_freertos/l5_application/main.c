@@ -47,8 +47,7 @@ void sem_isr(void) {
   // fprintf(stderr, "Interrupt is hit 29\n");
   xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
 }
-
-/****************** PART1:Interrupt with Binary Semaphore ****************************
+#ifdef PART1
 void gpio_interrupt(void);
 static void clear_gpio_interrupt(void);
 static void configure_your_gpio_interrupt(void);
@@ -61,7 +60,7 @@ void gpio_interrupt(void) {
   xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
 
   // fprintf(stderr, "Interrupt is hit\n");
-  ****************** PART0:SimpleInterrupt *******************************************
+#ifdef PART0
   gpio_s port1_pin8 = gpio__construct(GPIO__PORT_1, 8);
   gpio__set_as_output(port1_pin8);
   // a) Clear Port0/2 interrupt using CLR0 or CLR2 registers
@@ -69,7 +68,7 @@ void gpio_interrupt(void) {
   // b) Use fprintf(stderr) or blink and LED here to test your ISR
   // fprintf(stderr, "Interrupt is hit");
   gpio__reset(port1_pin8);
-  ****************** PART0:SimpleInterrupt End*******************************************
+#endif
 }
 static void clear_gpio_interrupt(void) { LPC_GPIOINT->IO0IntClr |= (1 << 29); }
 static void configure_your_gpio_interrupt(void) {
@@ -77,7 +76,7 @@ static void configure_your_gpio_interrupt(void) {
   gpio__set_as_input(port0_pin29);
   LPC_GPIOINT->IO0IntEnR |= (1 << 29);
 }
-****************** PART1:Interrupt with Binary Semaphore End****************************/
+#endif
 /*************************************************************************************
  * This function is activated after port0pin29_isr provides shared resource
  */
@@ -148,15 +147,15 @@ int main(void) {
 
   lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__GPIO, gpio__interrupt_dispatcher, "gpio_intr");
 
-  /****************** PART1:Interrupt with Binary Semaphore ****************************
+#ifdef PART1
   lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__GPIO, gpio_interrupt, "gpio_intr");
-   configure_your_gpio_interrupt(); // TODO: Setup interrupt by re-using code from Part 0
-   ****************** PART1:Interrupt with Binary Semaphore ****************************/
+  configure_your_gpio_interrupt(); // TODO: Setup interrupt by re-using code from Part 0
+#endif
   NVIC_EnableIRQ(GPIO_IRQn); // Enable interrupt gate for the GPIO
 
   xTaskCreate(sleep_on_sem_task, "sem", (512U * 4) / sizeof(void *), (void *)&port1_led8, PRIORITY_LOW, NULL);
   xTaskCreate(sleep_on_flashy_task, "sem", (512U * 4) / sizeof(void *), (void *)&flashy_led, PRIORITY_LOW, NULL);
-  /****************** PART0:SimpleInterrupt *******************************************
+#ifdef PART0
   gpio_s port0_pin29 = gpio__construct(GPIO__PORT_0, 29);
   gpio_s port1_pin8 = gpio__construct(GPIO__PORT_1, 8);
   gpio__set_as_output(port1_pin8);
@@ -171,8 +170,8 @@ int main(void) {
   //    Hint: You can declare 'void gpio_interrupt(void)' at interrupt_vector_table.c such that it can see this
   function
 
-  // Most important step: Enable the GPIO interrupt exception using the ARM Cortex M API (this is from lpc40xx.h)
-  NVIC_EnableIRQ(GPIO_IRQn);
+      // Most important step: Enable the GPIO interrupt exception using the ARM Cortex M API (this is from lpc40xx.h)
+      NVIC_EnableIRQ(GPIO_IRQn);
 
   // Toggle an LED in a loop to ensure/test that the interrupt is entering ane exiting
   // For example, if the GPIO interrupt gets stuck, this LED will stop blinking
@@ -181,7 +180,7 @@ int main(void) {
     // TODO: Toggle an LED here
     gpio__set(port1_pin8);
   }
-  ****************** PART0:SimpleInterrupt End *******************************************/
+#endif
 
   puts("Starting RTOS");
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
