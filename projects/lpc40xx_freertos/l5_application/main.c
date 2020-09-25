@@ -9,15 +9,57 @@
 #include "periodic_scheduler.h"
 #include "sj2_cli.h"
 
+#include "lpc40xx.h"
+#include "pwm1.h"
+
 static void create_blinky_tasks(void);
 static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
 
-int main(void) {
-  create_blinky_tasks();
-  create_uart_task();
+typedef struct {
+  gpio__port_e port;
+  uint8_t pin;
+} port_pin_s;
 
+void pwm_task(void *p) {
+
+  // Locate a GPIO pin that a PWM channel will control
+  // NOTE You can use gpio__construct_with_function() API from gpio.h
+  // TODO Write this function yourself
+  LPC_IOCON->P2_1 &= ~0b111;
+  LPC_IOCON->P2_1 |= 0b001;
+  // pin_configure_pwm_channel_as_io_pin();
+  pwm1__init_single_edge(5);
+  // We only need to set PWM configuration once, and the HW will drive
+  // the GPIO at 1000Hz, and control set its duty cycle to 50%
+  pwm1__set_duty_cycle(PWM1__2_1, 50);
+
+  // Continue to vary the duty cycle in the loop
+  uint8_t percent = 0;
+  while (1) {
+    pwm1__set_duty_cycle(PWM1__2_1, percent);
+    // fprintf(stderr, "%d\n", percent);
+    if (++percent > 100) {
+      percent = 0;
+    }
+
+    vTaskDelay(100);
+  }
+}
+
+int main(void) {
+  // create_blinky_tasks();
+  create_uart_task();
+  static port_pin_s flashy_led[4] = {{GPIO__PORT_2, 3}, {GPIO__PORT_1, 26}, {GPIO__PORT_1, 24}, {GPIO__PORT_1, 18}};
+
+  for (u_int8_t index = 0; index < 4; index++) {
+    gpio_s port_pin = gpio__construct(flashy_led[index].port, flashy_led[index].pin);
+    gpio__set_as_output(port_pin);
+    gpio__set(port_pin);
+  }
+
+  xTaskCreate(pwm_task, "pwm_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
   puts("Starting RTOS");
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
