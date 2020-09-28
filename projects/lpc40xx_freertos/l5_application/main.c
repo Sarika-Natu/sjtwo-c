@@ -9,6 +9,7 @@
 #include "periodic_scheduler.h"
 #include "sj2_cli.h"
 
+#include "adc.h"
 #include "lpc40xx.h"
 #include "pwm1.h"
 
@@ -22,14 +23,20 @@ typedef struct {
   uint8_t pin;
 } port_pin_s;
 
+void pin_configure_pwm_channel_as_io_pin() {
+  static port_pin_s pwm_ch = {GPIO__PORT_2, 1};
+  gpio_s pwm_channel = gpio__construct(pwm_ch.port, pwm_ch.pin);
+  gpio__set_as_output(pwm_channel);
+  LPC_IOCON->P2_1 &= ~0b111;
+  LPC_IOCON->P2_1 |= 0b001;
+}
 void pwm_task(void *p) {
 
   // Locate a GPIO pin that a PWM channel will control
   // NOTE You can use gpio__construct_with_function() API from gpio.h
   // TODO Write this function yourself
-  LPC_IOCON->P2_1 &= ~0b111;
-  LPC_IOCON->P2_1 |= 0b001;
-  // pin_configure_pwm_channel_as_io_pin();
+
+  pin_configure_pwm_channel_as_io_pin();
   pwm1__init_single_edge(5);
   // We only need to set PWM configuration once, and the HW will drive
   // the GPIO at 1000Hz, and control set its duty cycle to 50%
@@ -48,6 +55,34 @@ void pwm_task(void *p) {
   }
 }
 
+void pin_configure_adc_channel_as_io_pin(void) {
+  static port_pin_s adc_ch = {GPIO__PORT_1, 31};
+  gpio_s adc_channel = gpio__construct(adc_ch.port, adc_ch.pin);
+  LPC_IOCON->P0_25 &= ~0b111;
+  LPC_IOCON->P0_25 |= 0b001;      // setting FUNC bits of IOCON
+  LPC_IOCON->P0_25 &= ~(1u << 7); // setting pin to analog mode
+}
+void adc_task(void *p) {
+  adc__initialize();
+
+  // TODO This is the function you need to add to adc.h
+  // You can configure burst mode for just the channel you are using
+  adc__enable_burst_mode(ADC__CHANNEL_2);
+
+  // Configure a pin, such as P1.31 with FUNC 011 to route this pin as ADC channel 5
+  // You can use gpio__construct_with_function() API from gpio.h
+  pin_configure_adc_channel_as_io_pin(); // TODO You need to write this function
+
+  while (1) {
+    // Get the ADC reading using a new routine you created to read an ADC burst reading
+    // TODO: You need to write the implementation of this function
+    const uint16_t adc_value = adc__get_channel_reading_with_burst_mode(ADC__CHANNEL_2);
+    // const uint16_t adc_value = adc__get_adc_value(ADC__CHANNEL_5);
+    fprintf(stderr, "\nIn main: %d", adc_value);
+    vTaskDelay(100);
+  }
+}
+
 int main(void) {
   // create_blinky_tasks();
   create_uart_task();
@@ -58,8 +93,8 @@ int main(void) {
     gpio__set_as_output(port_pin);
     gpio__set(port_pin);
   }
-
   xTaskCreate(pwm_task, "pwm_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+  xTaskCreate(adc_task, "adc_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
   puts("Starting RTOS");
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 

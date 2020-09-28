@@ -48,6 +48,26 @@ uint16_t adc__get_adc_value(adc_channel_e channel_num) {
     }
     result = (LPC_ADC->GDR >> 4) & twelve_bits; // 12bits - B15:B4
   }
+  return result;
+}
+
+void adc__enable_burst_mode(adc_channel_e channel_num) {
+  const uint32_t enable_burst_mode = (1 << 16);
+  const uint32_t disable_start_conversion = (7 << 24);
+
+  LPC_ADC->CR &= ~disable_start_conversion;
+  LPC_ADC->CR |= enable_burst_mode;
+
+  // set SEL pins of CR register
+  LPC_ADC->CR &= ~0xFF;
+  LPC_ADC->CR |= (1 << channel_num);
+}
+
+uint16_t adc__get_channel_reading_with_burst_mode(adc_channel_e channel_num) {
+  const uint16_t twelve_bits = 0x0FFF;
+  uint16_t ADGDR_Read = LPC_ADC->GDR;
+  int channel = (ADGDR_Read >> 24) & 0x7;      // Extract Channel Number
+  uint16_t result = (ADGDR_Read >> 4) & 0xFFF; // Extract Conversion Result
 
   return result;
 }
