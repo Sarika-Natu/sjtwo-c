@@ -12,11 +12,15 @@
 #include "adc.h"
 #include "lpc40xx.h"
 #include "pwm1.h"
+#include "queue.h"
 
 static void create_blinky_tasks(void);
 static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
+
+// This is the queue handle we will need for the xQueue Send/Receive API
+static QueueHandle_t adc_to_pwm_task_queue;
 
 typedef struct {
   gpio__port_e port;
@@ -31,7 +35,7 @@ void pin_configure_pwm_channel_as_io_pin() {
   LPC_IOCON->P2_1 |= 0b001;
 }
 void pwm_task(void *p) {
-
+  int adc_reading;
   // Locate a GPIO pin that a PWM channel will control
   // NOTE You can use gpio__construct_with_function() API from gpio.h
   // TODO Write this function yourself
@@ -43,26 +47,31 @@ void pwm_task(void *p) {
   pwm1__set_duty_cycle(PWM1__2_1, 50);
 
   // Continue to vary the duty cycle in the loop
-  uint8_t percent = 0;
+
   while (1) {
+    if (xQueueReceive(adc_to_pwm_task_queue, &adc_reading, 100)) {
+      fprintf(stderr, "%d\n", adc_reading);
+      pwm1__set_duty_cycle(PWM1__2_1, adc_reading);
+    }
+#ifdef PART0
+    uint8_t percent = 0;
     pwm1__set_duty_cycle(PWM1__2_1, percent);
     // fprintf(stderr, "%d\n", percent);
     if (++percent > 100) {
       percent = 0;
     }
-
     vTaskDelay(100);
+#endif
   }
 }
 
 void pin_configure_adc_channel_as_io_pin(void) {
-  static port_pin_s adc_ch = {GPIO__PORT_1, 31};
-  gpio_s adc_channel = gpio__construct(adc_ch.port, adc_ch.pin);
   LPC_IOCON->P0_25 &= ~0b111;
   LPC_IOCON->P0_25 |= 0b001;      // setting FUNC bits of IOCON
   LPC_IOCON->P0_25 &= ~(1u << 7); // setting pin to analog mode
 }
 void adc_task(void *p) {
+  int adc_reading;
   adc__initialize();
 
   // TODO This is the function you need to add to adc.h
@@ -78,7 +87,10 @@ void adc_task(void *p) {
     // TODO: You need to write the implementation of this function
     const uint16_t adc_value = adc__get_channel_reading_with_burst_mode(ADC__CHANNEL_2);
     // const uint16_t adc_value = adc__get_adc_value(ADC__CHANNEL_5);
-    fprintf(stderr, "\nIn main: %d", adc_value);
+
+    adc_reading = adc_value;
+    xQueueSend(adc_to_pwm_task_queue, &adc_reading, 0);
+    // fprintf(stderr, "\nIn main: %d", adc_value);
     vTaskDelay(100);
   }
 }
@@ -93,6 +105,8 @@ int main(void) {
     gpio__set_as_output(port_pin);
     gpio__set(port_pin);
   }
+  // Queue will only hold 1 integer
+  adc_to_pwm_task_queue = xQueueCreate(1, sizeof(int));
   xTaskCreate(pwm_task, "pwm_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
   xTaskCreate(adc_task, "adc_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
   puts("Starting RTOS");
