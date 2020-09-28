@@ -22,42 +22,74 @@ static void uart_task(void *params);
 // This is the queue handle we will need for the xQueue Send/Receive API
 static QueueHandle_t adc_to_pwm_task_queue;
 
+#define ADC_MAX_VALUE 4095.0
+#define VREF 3.3
+#define PWM_FREQ 1
+#define DUTY_CYCLE_50 50
+#define PERCENTILE 100
+
 typedef struct {
   gpio__port_e port;
   uint8_t pin;
 } port_pin_s;
 
 void pin_configure_pwm_channel_as_io_pin() {
-  static port_pin_s pwm_ch = {GPIO__PORT_2, 1};
-  gpio_s pwm_channel = gpio__construct(pwm_ch.port, pwm_ch.pin);
-  gpio__set_as_output(pwm_channel);
-  LPC_IOCON->P2_1 &= ~0b111;
-  LPC_IOCON->P2_1 |= 0b001;
+  const uint32_t func_mask = 0x07;
+  const uint32_t enable_pwm_func = 0x01;
+  LPC_IOCON->P2_0 &= ~func_mask;
+  LPC_IOCON->P2_0 |= enable_pwm_func;
+
+  LPC_IOCON->P2_1 &= ~func_mask;
+  LPC_IOCON->P2_1 |= enable_pwm_func;
+
+  LPC_IOCON->P2_2 &= ~func_mask;
+  LPC_IOCON->P2_2 |= enable_pwm_func;
+
+  LPC_IOCON->P2_4 &= ~func_mask;
+  LPC_IOCON->P2_4 |= enable_pwm_func;
 }
 void pwm_task(void *p) {
   int adc_reading;
+  uint32_t MR_Readch1, MR_Readch2, MR_Readch3, MR_Readch4;
+  uint32_t MR_Read0;
   // Locate a GPIO pin that a PWM channel will control
   // NOTE You can use gpio__construct_with_function() API from gpio.h
   // TODO Write this function yourself
 
   pin_configure_pwm_channel_as_io_pin();
-  pwm1__init_single_edge(5);
+  pwm1__init_single_edge(PWM_FREQ);
   // We only need to set PWM configuration once, and the HW will drive
   // the GPIO at 1000Hz, and control set its duty cycle to 50%
-  pwm1__set_duty_cycle(PWM1__2_1, 50);
+  pwm1__set_duty_cycle(PWM1__2_0, DUTY_CYCLE_50);
+  pwm1__set_duty_cycle(PWM1__2_1, DUTY_CYCLE_50);
+  pwm1__set_duty_cycle(PWM1__2_2, DUTY_CYCLE_50);
+  pwm1__set_duty_cycle(PWM1__2_4, DUTY_CYCLE_50);
 
   // Continue to vary the duty cycle in the loop
 
   while (1) {
     if (xQueueReceive(adc_to_pwm_task_queue, &adc_reading, 100)) {
-      fprintf(stderr, "%d\n", adc_reading);
-      pwm1__set_duty_cycle(PWM1__2_1, adc_reading);
+      uint8_t adc_percentage = (u_int8_t)(((double)adc_reading / ADC_MAX_VALUE) * PERCENTILE);
+      pwm1__set_duty_cycle(PWM1__2_0, adc_percentage);
+      pwm1__set_duty_cycle(PWM1__2_1, adc_percentage);
+      pwm1__set_duty_cycle(PWM1__2_2, adc_percentage);
+      pwm1__set_duty_cycle(PWM1__2_4, adc_percentage);
+      MR_Read0 = LPC_PWM1->MR0;
+      fprintf(stderr, "The value at MR0 is %ld\n", MR_Read0);
+      MR_Readch1 = LPC_PWM1->MR1;
+      fprintf(stderr, "The value at MR1 is %ld\n", MR_Readch1);
+      MR_Readch2 = LPC_PWM1->MR2;
+      fprintf(stderr, "The value at MR2 is %ld\n", MR_Readch2);
+      MR_Readch3 = LPC_PWM1->MR3;
+      fprintf(stderr, "The value at MR3 is %ld\n", MR_Readch3);
+      MR_Readch4 = LPC_PWM1->MR5;
+      fprintf(stderr, "The value at MR5 is %ld\n\n", MR_Readch4);
     }
 #ifdef PART0
     uint8_t percent = 0;
     pwm1__set_duty_cycle(PWM1__2_1, percent);
     // fprintf(stderr, "%d\n", percent);
-    if (++percent > 100) {
+    if (++percent > PERCENTILE) {
       percent = 0;
     }
     vTaskDelay(100);
@@ -66,13 +98,20 @@ void pwm_task(void *p) {
 }
 
 void pin_configure_adc_channel_as_io_pin(void) {
-  LPC_IOCON->P0_25 &= ~0b111;
-  LPC_IOCON->P0_25 |= 0b001;      // setting FUNC bits of IOCON
-  LPC_IOCON->P0_25 &= ~(1u << 7); // setting pin to analog mode
+  const uint32_t func_mask = 0x07;
+  const uint32_t enable_adc_func = 0x01;
+  const uint32_t enable_analog_mode = (1u << 7);
+
+  LPC_IOCON->P0_25 &= ~func_mask;
+  LPC_IOCON->P0_25 |= enable_adc_func;     // setting FUNC bits of IOCON
+  LPC_IOCON->P0_25 &= ~enable_analog_mode; // setting pin to analog mode
 }
 void adc_task(void *p) {
   int adc_reading;
+  double adc_voltage = 0;
   adc__initialize();
+  int64_t average = 0;
+  int i = 0;
 
   // TODO This is the function you need to add to adc.h
   // You can configure burst mode for just the channel you are using
@@ -85,13 +124,23 @@ void adc_task(void *p) {
   while (1) {
     // Get the ADC reading using a new routine you created to read an ADC burst reading
     // TODO: You need to write the implementation of this function
-    const uint16_t adc_value = adc__get_channel_reading_with_burst_mode(ADC__CHANNEL_2);
-    // const uint16_t adc_value = adc__get_adc_value(ADC__CHANNEL_5);
+    while (i < 30) {
+      const uint16_t adc_value = adc__get_channel_reading_with_burst_mode(ADC__CHANNEL_2);
+      // const uint16_t adc_value = adc__get_adc_value(ADC__CHANNEL_5);
+      average += adc_value;
+      i++;
+    }
 
-    adc_reading = adc_value;
+    adc_reading = (int)((double)average / 30.0);
+    average = 0;
+    i = 0;
+    adc_voltage = ((double)adc_reading / ADC_MAX_VALUE) * VREF;
+    fprintf(stderr, "The voltage read using the potentiometer is : %f volts\n", adc_voltage);
+    // fprintf(stderr, "the ADC reading is: %d\n", adc_reading);
+
     xQueueSend(adc_to_pwm_task_queue, &adc_reading, 0);
-    // fprintf(stderr, "\nIn main: %d", adc_value);
-    vTaskDelay(100);
+
+    vTaskDelay(150);
   }
 }
 
