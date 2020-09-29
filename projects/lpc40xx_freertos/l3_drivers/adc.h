@@ -24,3 +24,6 @@ void adc__initialize(void);
  * This starts conversion of one channel, and should not be used from multiple tasks
  */
 uint16_t adc__get_adc_value(adc_channel_e channel_num);
+
+void adc__enable_burst_mode(adc_channel_e channel_num);
+uint16_t adc__get_channel_reading_with_burst_mode(adc_channel_e channel_number);
