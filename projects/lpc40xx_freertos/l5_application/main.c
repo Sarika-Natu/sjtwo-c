@@ -9,16 +9,32 @@
 #include "periodic_scheduler.h"
 #include "sj2_cli.h"
 
+#include "semphr.h"
 #include "ssp2_lab.h"
 
 static void create_blinky_tasks(void);
 static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
+
+// TODO: Study the Adesto flash 'Manufacturer and Device ID' section
+typedef struct {
+  uint8_t manufacturer_id;
+  uint8_t device_id_1;
+  uint8_t device_id_2;
+  uint8_t extended_device_id;
+} adesto_flash_id_s;
+
+static SemaphoreHandle_t spi_bus_mutex;
+
 // TODO: Implement Adesto flash memory CS signal as a GPIO driver
 void adesto_cs(void);
 void adesto_ds(void);
 static void set_ssp_iocon(void);
+static adesto_flash_id_s ssp2__adesto_read_signature(void);
+void spi_task(void *p);
+void spi_id_verification_task1(void *p);
+void spi_id_verification_task2(void *p);
 
 void adesto_cs(void) {
   const uint32_t cs_pin = (1 << 10);
@@ -30,17 +46,9 @@ void adesto_ds(void) {
   LPC_GPIO1->SET = cs_pin;
 }
 
-// TODO: Study the Adesto flash 'Manufacturer and Device ID' section
-typedef struct {
-  uint8_t manufacturer_id;
-  uint8_t device_id_1;
-  uint8_t device_id_2;
-  uint8_t extended_device_id;
-} adesto_flash_id_s;
-
 // TODO: Implement the code to read Adesto flash memory signature
 // TODO: Create struct of type 'adesto_flash_id_s' and return it
-adesto_flash_id_s adesto_read_signature(void) {
+static adesto_flash_id_s ssp2__adesto_read_signature(void) {
   adesto_flash_id_s data = {0};
   const uint8_t opcode = 0x9F;
   const uint8_t dummy_send = 0xFF;
@@ -77,6 +85,40 @@ static void set_ssp_iocon(void) {
   LPC_GPIO1->DIR |= cs_pin;
 }
 
+void spi_id_verification_task1(void *p) {
+  while (1) {
+    if (xSemaphoreTake(spi_bus_mutex, 1000)) {
+      // Use Guarded Resource
+      const adesto_flash_id_s id = ssp2__adesto_read_signature();
+
+      // When we read a manufacturer ID we do not expect, we will kill this task
+      if (id.manufacturer_id != 0x1F) {
+        fprintf(stderr, "Manufacturer ID read failure\n");
+        vTaskSuspend(NULL); // Kill this task
+      }
+      // Give Semaphore back:
+      xSemaphoreGive(spi_bus_mutex);
+    }
+  }
+}
+
+void spi_id_verification_task2(void *p) {
+  while (1) {
+    if (xSemaphoreTake(spi_bus_mutex, 1000)) {
+      // Use Guarded Resource
+      const adesto_flash_id_s id = ssp2__adesto_read_signature();
+
+      // When we read a manufacturer ID we do not expect, we will kill this task
+      if (id.manufacturer_id != 0x1F) {
+        fprintf(stderr, "Manufacturer ID read failure\n");
+        vTaskSuspend(NULL); // Kill this task
+      }
+      // Give Semaphore back:
+      xSemaphoreGive(spi_bus_mutex);
+    }
+  }
+}
+
 void spi_task(void *p) {
   const uint32_t spi_clock_mhz = 24;
   ssp2__init(spi_clock_mhz);
@@ -90,7 +132,7 @@ void spi_task(void *p) {
   set_ssp_iocon();
 
   while (1) {
-    adesto_flash_id_s id = adesto_read_signature();
+    adesto_flash_id_s id = ssp2__adesto_read_signature();
     // TODO: printf the members of the 'adesto_flash_id_s' struct
     fprintf(stderr, "MANUFACTURER ID = %x\n", id.manufacturer_id);
     fprintf(stderr, "DEVICE ID BYTE 1 = %x\n", id.device_id_1);
@@ -105,9 +147,18 @@ int main(void) {
   create_blinky_tasks();
   create_uart_task();
 
+  const uint32_t spi_clock_mhz = 24;
+  ssp2__init(spi_clock_mhz);
+  set_ssp_iocon();
+
+  spi_bus_mutex = xSemaphoreCreateMutex();
   puts("Starting RTOS");
 
-  xTaskCreate(spi_task, "spi_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+  // xTaskCreate(spi_task, "spi_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+
+  // Create two tasks that will continously read signature
+  xTaskCreate(spi_id_verification_task1, "spi_ver1", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+  xTaskCreate(spi_id_verification_task2, "spi_ver2", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
   return 0;
