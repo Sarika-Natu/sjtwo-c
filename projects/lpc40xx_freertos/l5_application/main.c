@@ -15,12 +15,99 @@ static void create_blinky_tasks(void);
 static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
+// TODO: Implement Adesto flash memory CS signal as a GPIO driver
+void adesto_cs(void);
+void adesto_ds(void);
+static void set_ssp_iocon(void);
+
+void adesto_cs(void) {
+  const uint32_t cs_pin = (1 << 10);
+  LPC_GPIO1->CLR = cs_pin;
+}
+
+void adesto_ds(void) {
+  const uint32_t cs_pin = (1 << 10);
+  LPC_GPIO1->SET = cs_pin;
+}
+
+// TODO: Study the Adesto flash 'Manufacturer and Device ID' section
+typedef struct {
+  uint8_t manufacturer_id;
+  uint8_t device_id_1;
+  uint8_t device_id_2;
+  uint8_t extended_device_id;
+} adesto_flash_id_s;
+
+// TODO: Implement the code to read Adesto flash memory signature
+// TODO: Create struct of type 'adesto_flash_id_s' and return it
+adesto_flash_id_s adesto_read_signature(void) {
+  adesto_flash_id_s data = {0};
+  const uint8_t opcode = 0x9F;
+  const uint8_t dummy_send = 0xFF;
+  adesto_cs();
+  {
+    // Send opcode and read bytes
+    ssp2__exchg_byte(opcode);
+    // TODO: Populate members of the 'adesto_flash_id_s' struct
+    data.manufacturer_id = ssp2__exchg_byte(dummy_send);
+    data.device_id_1 = ssp2__exchg_byte(dummy_send);
+    data.device_id_2 = ssp2__exchg_byte(dummy_send);
+    data.extended_device_id = ssp2__exchg_byte(dummy_send);
+  }
+  adesto_ds();
+
+  return data;
+}
+
+static void set_ssp_iocon(void) {
+  const uint32_t func_mask = 0x07;
+  const uint32_t enable_spi_func = 0x04;
+  const uint32_t cs_pin = (1 << 10);
+
+  // SSP2_SCK pin
+  LPC_IOCON->P1_0 &= func_mask;
+  LPC_IOCON->P1_0 |= enable_spi_func;
+  // SSP2_MOSI pin
+  LPC_IOCON->P1_1 &= func_mask;
+  LPC_IOCON->P1_1 |= enable_spi_func;
+  // SSP2_MISO pin
+  LPC_IOCON->P1_4 &= func_mask;
+  LPC_IOCON->P1_4 |= enable_spi_func;
+  // SSP2_CS GPIO pin as output
+  LPC_GPIO1->DIR |= cs_pin;
+}
+
+void spi_task(void *p) {
+  const uint32_t spi_clock_mhz = 24;
+  ssp2__init(spi_clock_mhz);
+
+  // From the LPC schematics pdf, find the pin numbers connected to flash memory
+  // Read table 84 from LPC User Manual and configure PIN functions for SPI2 pins
+  // You can use gpio__construct_with_function() API from gpio.h
+  //
+  // Note: Configure only SCK2, MOSI2, MISO2.
+  // CS will be a GPIO output pin(configure and setup direction)
+  set_ssp_iocon();
+
+  while (1) {
+    adesto_flash_id_s id = adesto_read_signature();
+    // TODO: printf the members of the 'adesto_flash_id_s' struct
+    fprintf(stderr, "MANUFACTURER ID = %x\n", id.manufacturer_id);
+    fprintf(stderr, "DEVICE ID BYTE 1 = %x\n", id.device_id_1);
+    fprintf(stderr, "DEVICE ID BYTE 2 = %x\n", id.device_id_2);
+    fprintf(stderr, "EXTENDED INFORMATION STRING LENGTH = %x\n", id.extended_device_id);
+
+    vTaskDelay(500);
+  }
+}
 
 int main(void) {
   create_blinky_tasks();
   create_uart_task();
 
   puts("Starting RTOS");
+
+  xTaskCreate(spi_task, "spi_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
   return 0;
