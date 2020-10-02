@@ -9,6 +9,8 @@
 #include "periodic_scheduler.h"
 #include "sj2_cli.h"
 
+#include "ssp2_lab.h"
+
 static void create_blinky_tasks(void);
 static void create_uart_task(void);
 static void blink_task(void *params);
