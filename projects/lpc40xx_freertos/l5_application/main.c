@@ -25,6 +25,11 @@ typedef struct {
   uint8_t extended_device_id;
 } adesto_flash_id_s;
 
+typedef struct {
+  uint8_t StatusReg_1;
+  uint8_t StatusReg_2;
+} adesto_statusreg_s;
+
 static SemaphoreHandle_t spi_bus_mutex;
 
 // TODO: Implement Adesto flash memory CS signal as a GPIO driver
@@ -35,15 +40,20 @@ static adesto_flash_id_s ssp2__adesto_read_signature(void);
 void spi_task(void *p);
 void spi_id_verification_task1(void *p);
 void spi_id_verification_task2(void *p);
+static adesto_statusreg_s ssp2__adesto_read_status_register(void);
 
 void adesto_cs(void) {
   const uint32_t cs_pin = (1 << 10);
+  const uint32_t cs_pin_dummy = (1 << 28);
   LPC_GPIO1->CLR = cs_pin;
+  LPC_GPIO4->CLR = cs_pin_dummy;
 }
 
 void adesto_ds(void) {
   const uint32_t cs_pin = (1 << 10);
+  const uint32_t cs_pin_dummy = (1 << 28);
   LPC_GPIO1->SET = cs_pin;
+  LPC_GPIO4->SET = cs_pin_dummy;
 }
 
 // TODO: Implement the code to read Adesto flash memory signature
@@ -67,10 +77,28 @@ static adesto_flash_id_s ssp2__adesto_read_signature(void) {
   return data;
 }
 
+static adesto_statusreg_s ssp2__adesto_read_status_register(void) {
+  adesto_statusreg_s data = {0};
+  const uint8_t opcode = 0x05;
+  const uint8_t dummy_send = 0xFF;
+  adesto_cs();
+  {
+    // Send opcode and read bytes
+    ssp2__exchg_byte(opcode);
+    // TODO: Populate members of the 'adesto_flash_id_s' struct
+    data.StatusReg_1 = ssp2__exchg_byte(dummy_send);
+    data.StatusReg_2 = ssp2__exchg_byte(dummy_send);
+  }
+  adesto_ds();
+
+  return data;
+}
+
 static void set_ssp_iocon(void) {
   const uint32_t func_mask = 0x07;
   const uint32_t enable_spi_func = 0x04;
   const uint32_t cs_pin = (1 << 10);
+  const uint32_t cs_pin_dummy = (1 << 28);
 
   // SSP2_SCK pin
   LPC_IOCON->P1_0 &= func_mask;
@@ -83,6 +111,7 @@ static void set_ssp_iocon(void) {
   LPC_IOCON->P1_4 |= enable_spi_func;
   // SSP2_CS GPIO pin as output
   LPC_GPIO1->DIR |= cs_pin;
+  LPC_GPIO4->DIR |= cs_pin_dummy;
 }
 
 void spi_id_verification_task1(void *p) {
@@ -120,6 +149,7 @@ void spi_id_verification_task2(void *p) {
 }
 
 void spi_task(void *p) {
+#ifdef PART1
   const uint32_t spi_clock_mhz = 24;
   ssp2__init(spi_clock_mhz);
 
@@ -130,7 +160,7 @@ void spi_task(void *p) {
   // Note: Configure only SCK2, MOSI2, MISO2.
   // CS will be a GPIO output pin(configure and setup direction)
   set_ssp_iocon();
-
+#endif
   while (1) {
     adesto_flash_id_s id = ssp2__adesto_read_signature();
     // TODO: printf the members of the 'adesto_flash_id_s' struct
@@ -138,6 +168,18 @@ void spi_task(void *p) {
     fprintf(stderr, "DEVICE ID BYTE 1 = %x\n", id.device_id_1);
     fprintf(stderr, "DEVICE ID BYTE 2 = %x\n", id.device_id_2);
     fprintf(stderr, "EXTENDED INFORMATION STRING LENGTH = %x\n", id.extended_device_id);
+
+    vTaskDelay(500);
+  }
+}
+
+void spi_statustask(void *p) {
+
+  while (1) {
+    adesto_statusreg_s id = ssp2__adesto_read_status_register();
+    // TODO: printf the members of the 'adesto_flash_id_s' struct
+    fprintf(stderr, "STATUS REGISTER 1 = %x\n", id.StatusReg_1);
+    fprintf(stderr, "STATUS REGISTER 2 = %x\n", id.StatusReg_2);
 
     vTaskDelay(500);
   }
@@ -153,12 +195,17 @@ int main(void) {
 
   spi_bus_mutex = xSemaphoreCreateMutex();
   puts("Starting RTOS");
+#ifdef PART1
+  xTaskCreate(spi_task, "spi_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+#endif
 
-  // xTaskCreate(spi_task, "spi_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
-
+#ifdef PART2
   // Create two tasks that will continously read signature
   xTaskCreate(spi_id_verification_task1, "spi_ver1", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
   xTaskCreate(spi_id_verification_task2, "spi_ver2", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+#endif
+
+  xTaskCreate(spi_statustask, "spi_statustask", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
   return 0;
