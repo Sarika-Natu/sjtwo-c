@@ -26,8 +26,14 @@ typedef struct {
 } adesto_flash_id_s;
 
 typedef struct {
-  uint8_t StatusReg_1;
-  uint8_t StatusReg_2;
+  bool BPL;
+  bool EPE;
+  bool WPP;
+  bool BP0;
+  bool WEL;
+  bool RDYBSY;
+  bool RSTE;
+
 } adesto_statusreg_s;
 
 static SemaphoreHandle_t spi_bus_mutex;
@@ -81,17 +87,54 @@ static adesto_statusreg_s ssp2__adesto_read_status_register(void) {
   adesto_statusreg_s data = {0};
   const uint8_t opcode = 0x05;
   const uint8_t dummy_send = 0xFF;
+  uint8_t dummy_read1 = 0x00;
+  uint8_t dummy_read2 = 0x00;
   adesto_cs();
   {
     // Send opcode and read bytes
     ssp2__exchg_byte(opcode);
     // TODO: Populate members of the 'adesto_flash_id_s' struct
-    data.StatusReg_1 = ssp2__exchg_byte(dummy_send);
-    data.StatusReg_2 = ssp2__exchg_byte(dummy_send);
+    dummy_read1 = ssp2__exchg_byte(dummy_send);
+    dummy_read2 = ssp2__exchg_byte(dummy_send);
+
+    data.BPL = (0x01 & (dummy_read1 >> 7));
+    data.EPE = (0x01 & (dummy_read1 >> 5));
+    data.WPP = (0x01 & (dummy_read1 >> 4));
+    data.BP0 = (0x01 & (dummy_read1 >> 2));
+    data.WEL = (0x01 & (dummy_read1 >> 1));
+    data.RDYBSY = (0x01 & (dummy_read1 >> 0)); // RDY/BSY status can be read from Status Register 1 or 2
+    data.RSTE = (0x01 & (dummy_read2 >> 4));
   }
   adesto_ds();
 
   return data;
+}
+
+/**
+ * Adesto flash asks to send 24-bit address
+ * We can use our usual uint32_t to store the address
+ * and then transmit this address over the SPI driver
+ * one byte at a time
+ */
+uint16_t adesto_flash_send_address(uint32_t address) {
+  const uint8_t opcode = 0x0B;
+  const uint8_t dummy_send = 0xAA;
+  uint8_t readvalue = 0x00;
+  uint16_t register_value = 0x0000;
+  adesto_cs();
+  {
+    ssp2__exchg_byte(opcode);
+    ssp2__exchg_byte((address >> 16) & 0xFF);
+    ssp2__exchg_byte((address >> 8) & 0xFF);
+    ssp2__exchg_byte((address >> 0) & 0xFF);
+    ssp2__exchg_byte(dummy_send); // Additional dummy byte for opcode 0x0B Read Array
+    readvalue = ssp2__exchg_byte(dummy_send);
+    register_value = (readvalue << 8);
+    readvalue = ssp2__exchg_byte(dummy_send);
+    register_value |= (readvalue << 0);
+  }
+  adesto_ds();
+  return register_value;
 }
 
 static void set_ssp_iocon(void) {
@@ -164,7 +207,7 @@ void spi_task(void *p) {
   while (1) {
     adesto_flash_id_s id = ssp2__adesto_read_signature();
     // TODO: printf the members of the 'adesto_flash_id_s' struct
-    fprintf(stderr, "MANUFACTURER ID = %x\n", id.manufacturer_id);
+    fprintf(stderr, "\n\nMANUFACTURER ID = %x\n", id.manufacturer_id);
     fprintf(stderr, "DEVICE ID BYTE 1 = %x\n", id.device_id_1);
     fprintf(stderr, "DEVICE ID BYTE 2 = %x\n", id.device_id_2);
     fprintf(stderr, "EXTENDED INFORMATION STRING LENGTH = %x\n", id.extended_device_id);
@@ -177,9 +220,24 @@ void spi_statustask(void *p) {
 
   while (1) {
     adesto_statusreg_s id = ssp2__adesto_read_status_register();
+    // TODO: printf the members of the 'adesto_statusreg_s' struct
+    fprintf(stderr, "\n\nStatus of Block Protection Locked bit is = %d\n", id.BPL);
+    fprintf(stderr, "Status of Erase/Program Error bit is = %d\n", id.EPE);
+    fprintf(stderr, "Status of Write Protect bit is = %d\n", id.WPP);
+    fprintf(stderr, "Status of Block Protection bit is = %d\n", id.BP0);
+    fprintf(stderr, "Status of Write Enable Latch bit is = %d\n", id.WEL);
+    fprintf(stderr, "Status of Ready/Busy bit is = %d\n", id.RDYBSY);
+    fprintf(stderr, "Status of Reset Enabled bit is = %d\n\n", id.RSTE);
+    vTaskDelay(500);
+  }
+}
+
+void spi_readtask(void *p) {
+  uint16_t regiter_value = 0x0000;
+  while (1) {
+    regiter_value = adesto_flash_send_address(0x007FFE);
     // TODO: printf the members of the 'adesto_flash_id_s' struct
-    fprintf(stderr, "STATUS REGISTER 1 = %x\n", id.StatusReg_1);
-    fprintf(stderr, "STATUS REGISTER 2 = %x\n", id.StatusReg_2);
+    fprintf(stderr, "Read value of Register is = %x\n", regiter_value);
 
     vTaskDelay(500);
   }
@@ -206,6 +264,7 @@ int main(void) {
 #endif
 
   xTaskCreate(spi_statustask, "spi_statustask", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+  xTaskCreate(spi_readtask, "spi_readtask", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
   return 0;
