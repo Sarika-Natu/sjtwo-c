@@ -16,9 +16,56 @@ static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
 
+void uart_read_task(void *p) {
+  while (1) {
+    char input_byte = 'B';
+
+    // TODO: Use uart_lab__polled_get() function and printf the received value
+    bool result = uart_lab__polled_get(UART_3, &input_byte);
+
+    if (result) {
+
+      fprintf(stderr, "\nCharacter read on UART3 is %c\n", input_byte);
+    } else {
+      fprintf(stderr, "Character not received on UART3\n");
+    }
+
+    vTaskDelay(500);
+  }
+}
+
+void uart_write_task(void *p) {
+  while (1) {
+
+    char output_byte = 'A';
+    // TODO: Use uart_lab__polled_put() function and send a value
+
+    bool result = uart_lab__polled_put(UART_3, output_byte);
+    if (result) {
+      fprintf(stderr, "\nCharacter sent on UART3 is %c\n", output_byte);
+    } else {
+      fprintf(stderr, "Character not sent on UART3\n");
+    }
+
+    vTaskDelay(500);
+  }
+}
+
 int main(void) {
   create_blinky_tasks();
   create_uart_task();
+
+  const uint32_t peripheral_clock = 96 * 1000 * 1000;
+  const uint32_t baud_rate = 38400;
+
+  // TODO : Use uart_lab__init() function and initialize UART2 or UART3(your choice)
+  // TODO: Pin Configure IO pins to perform UART2/UART3 function
+
+  fprintf(stderr, "Initialize UART\n");
+  uart_lab__init(UART_3, peripheral_clock, baud_rate);
+
+  xTaskCreate(uart_write_task, "uart_write", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+  xTaskCreate(uart_read_task, "uart_read", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
 
   puts("Starting RTOS");
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
