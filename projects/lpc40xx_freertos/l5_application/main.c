@@ -18,6 +18,9 @@ static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
 
+#define PART2
+
+#ifdef PART3
 // This task is done for you, but you should understand what this code is doing
 void board_1_sender_task(void *p) {
   char number_as_string[16] = {0};
@@ -62,6 +65,7 @@ void board_2_receiver_task(void *p) {
     }
   }
 }
+#endif
 
 #ifdef PART2
 void uart_read_intr(void *p) {
@@ -138,10 +142,10 @@ int main(void) {
 
   uart__enable_receive_interrupt(UART_3);
   NVIC_EnableIRQ(UART3_IRQn);
-
+#ifdef PART3
   xTaskCreate(board_2_receiver_task, "receiver_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
   xTaskCreate(board_1_sender_task, "sender_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
-
+#endif
 #ifdef PART2
   xTaskCreate(uart_read_intr, "uart_read_intr", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
   xTaskCreate(uart_write_task, "uart_write", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
