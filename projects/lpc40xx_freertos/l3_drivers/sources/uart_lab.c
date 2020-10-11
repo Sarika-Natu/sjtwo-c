@@ -8,11 +8,41 @@
 #include "queue.h"
 #include "task.h"
 #include "uart_lab.h"
-#include <stdio.h>
 
 // Private queue handle of our uart_lab.c
 static QueueHandle_t your_uart_rx_queue;
 
+static void power_on_peripheral(uart_number_e uart) {
+  const uint32_t enable_uart2 = (1 << 24);
+  const uint32_t enable_uart3 = (1 << 25);
+
+  if (UART_2 == uart) {
+    LPC_SC->PCONP |= enable_uart2;
+  } else if (UART_3 == uart) {
+    LPC_SC->PCONP |= enable_uart3;
+  } else {
+  }
+}
+
+static void set_iocon_for_uart(uart_number_e uart) {
+
+  const uint32_t func_mask = 0x07;
+  const uint32_t enable_uart2_func = 0x01;
+  const uint32_t enable_uart3_func = 0x02;
+
+  if (UART_2 == uart) {
+    LPC_IOCON->P0_10 &= func_mask;
+    LPC_IOCON->P0_10 |= enable_uart2_func;
+    LPC_IOCON->P0_11 &= func_mask;
+    LPC_IOCON->P0_11 |= enable_uart2_func;
+  } else if (UART_3 == uart) {
+    LPC_IOCON->P4_28 &= func_mask;
+    LPC_IOCON->P4_28 |= enable_uart3_func;
+    LPC_IOCON->P4_29 &= func_mask;
+    LPC_IOCON->P4_29 |= enable_uart3_func;
+  } else {
+  }
+}
 // Private function of our uart_lab.c
 static void your_receive_interrupt(void) {
   uint32_t interrupt_identification = (0b010 << 1);
@@ -89,12 +119,6 @@ bool uart_lab__get_char_from_queue(char *input_byte, uint32_t timeout) {
 void uart_lab__init(uart_number_e uart, uint32_t peripheral_clock, uint32_t baud_rate) {
   // Refer to LPC User manual and setup the register bits correctly
   // The first page of the UART chapter has good instructions
-  const uint32_t enable_uart2 = (1 << 24);
-  const uint32_t enable_uart3 = (1 << 25);
-
-  const uint32_t func_mask = 0x07;
-  const uint32_t enable_uart2_func = 0x01;
-  const uint32_t enable_uart3_func = 0x02;
 
   const uint32_t dlab_bit = (1 << 7);
   const uint32_t word_len_sel_mask = (0b11 << 0);
@@ -103,10 +127,8 @@ void uart_lab__init(uart_number_e uart, uint32_t peripheral_clock, uint32_t baud
   const uint8_t byte_mask = 0xFF;
   uint16_t dlm_dll = 0;
 
+  power_on_peripheral(uart);
   if (UART_2 == uart) {
-    // a) Power on Peripheral
-    LPC_SC->PCONP |= enable_uart2;
-
     // b) Setup DLL, DLM, FDR, LCR registers
     LPC_UART2->LCR |= dlab_bit;
 
@@ -121,7 +143,6 @@ void uart_lab__init(uart_number_e uart, uint32_t peripheral_clock, uint32_t baud
     LPC_UART2->LCR |= word_len_sel_8bit;
 
   } else if (UART_3 == uart) {
-    LPC_SC->PCONP |= enable_uart3;
     LPC_UART3->LCR |= dlab_bit;
 
     dlm_dll = (peripheral_clock / baud_rate / 16);
@@ -133,12 +154,9 @@ void uart_lab__init(uart_number_e uart, uint32_t peripheral_clock, uint32_t baud
     LPC_UART3->LCR &= ~word_len_sel_mask;
     LPC_UART3->LCR |= word_len_sel_8bit;
 
-    LPC_IOCON->P4_28 &= func_mask;
-    LPC_IOCON->P4_28 |= enable_uart3_func;
-    LPC_IOCON->P4_29 &= func_mask;
-    LPC_IOCON->P4_29 |= enable_uart3_func;
   } else {
   }
+  set_iocon_for_uart(uart);
 }
 
 // Read the byte from RBR and actually save it to the pointer

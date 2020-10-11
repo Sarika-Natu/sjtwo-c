@@ -18,7 +18,7 @@ static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
 
-#define PART2
+#define PART3
 
 #ifdef PART3
 // This task is done for you, but you should understand what this code is doing
@@ -112,7 +112,7 @@ void uart_read_task(void *p) {
 void uart_write_task(void *p) {
   while (1) {
 
-    char output_byte = 'A';
+    char output_byte = 'S';
     // TODO: Use uart_lab__polled_put() function and send a value
 
     bool result = uart_lab__polled_put(UART_3, output_byte);
@@ -139,19 +139,26 @@ int main(void) {
 
   fprintf(stderr, "Initialize UART\n");
   uart_lab__init(UART_3, peripheral_clock, baud_rate);
-
+#ifdef PART3
   uart__enable_receive_interrupt(UART_3);
   NVIC_EnableIRQ(UART3_IRQn);
+#endif
+
 #ifdef PART3
   xTaskCreate(board_2_receiver_task, "receiver_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
   xTaskCreate(board_1_sender_task, "sender_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+  fprintf(stderr, "UART LAB Part3\n");
 #endif
+
 #ifdef PART2
   xTaskCreate(uart_read_intr, "uart_read_intr", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
   xTaskCreate(uart_write_task, "uart_write", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+  fprintf(stderr, "UART LAB Part2\n");
+#endif
 #ifdef PART1
   xTaskCreate(uart_read_task, "uart_read", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
-#endif
+  xTaskCreate(uart_write_task, "uart_write", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+  fprintf(stderr, "UART LAB Part1\n");
 #endif
   puts("Starting RTOS");
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
