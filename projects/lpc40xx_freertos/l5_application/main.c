@@ -10,21 +10,71 @@
 #include "sj2_cli.h"
 
 #include "uart_lab.h"
+#include <stdlib.h>
+#include <string.h>
 
 static void create_blinky_tasks(void);
 static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
 
-void uart_read_task(void *p) {
+// This task is done for you, but you should understand what this code is doing
+void board_1_sender_task(void *p) {
+  char number_as_string[16] = {0};
+
+  while (true) {
+    const int number = rand();
+    sprintf(number_as_string, "%i", number);
+
+    // Send one char at a time to the other board including terminating NULL char
+    for (int i = 0; i <= strlen(number_as_string); i++) {
+      uart_lab__polled_put(UART_3, number_as_string[i]);
+      printf("Sent: %c\n", number_as_string[i]);
+    }
+
+    printf("Sent: %i over UART to the other board\n", number);
+    vTaskDelay(3000);
+  }
+}
+
+void board_2_receiver_task(void *p) {
+  char number_as_string[16] = {0};
+  int counter = 0;
+
+  while (true) {
+    char byte = 0;
+    uart_lab__get_char_from_queue(&byte, portMAX_DELAY);
+    printf("Received: %c\n", byte);
+
+    // This is the last char, so print the number
+    if ('\0' == byte) {
+      number_as_string[counter] = '\0';
+      counter = 0;
+      printf("Received this number from the other board: %s\n", number_as_string);
+    }
+    // We have not yet received the NULL '\0' char, so buffer the data
+    else {
+      // TODO: Store data to number_as_string[] array one char at a time
+      // Hint: Use counter as an index, and increment it as long as we do not reach max value of 16
+      for (counter = 0; counter < 15; counter++) {
+        number_as_string[counter] = byte;
+      }
+    }
+  }
+}
+
+#ifdef PART2
+void uart_read_intr(void *p) {
   while (1) {
     char input_byte = 'B';
 
     // TODO: Use uart_lab__polled_get() function and printf the received value
+    bool result = uart_lab__get_char_from_queue(&input_byte, 100);
+#ifdef PART1
+    // TODO: Use uart_lab__polled_get() function and printf the received value
     bool result = uart_lab__polled_get(UART_3, &input_byte);
-
+#endif
     if (result) {
-
       fprintf(stderr, "\nCharacter read on UART3 is %c\n", input_byte);
     } else {
       fprintf(stderr, "Character not received on UART3\n");
@@ -33,7 +83,28 @@ void uart_read_task(void *p) {
     vTaskDelay(500);
   }
 }
+#endif
 
+#ifdef PART1
+void uart_read_task(void *p) {
+  while (1) {
+    char input_byte = 'B';
+
+    // TODO: Use uart_lab__polled_get() function and printf the received value
+    bool result = uart_lab__polled_get(UART_3, &input_byte);
+
+    if (result) {
+      fprintf(stderr, "\nCharacter read on UART3 is %c\n", input_byte);
+    } else {
+      fprintf(stderr, "Character not received on UART3\n");
+    }
+
+    vTaskDelay(500);
+  }
+}
+#endif
+
+#ifdef PART2
 void uart_write_task(void *p) {
   while (1) {
 
@@ -42,7 +113,7 @@ void uart_write_task(void *p) {
 
     bool result = uart_lab__polled_put(UART_3, output_byte);
     if (result) {
-      fprintf(stderr, "\nCharacter sent on UART3 is %c\n", output_byte);
+      // fprintf(stderr, "\nCharacter sent on UART3 is %c\n", output_byte);
     } else {
       fprintf(stderr, "Character not sent on UART3\n");
     }
@@ -50,6 +121,7 @@ void uart_write_task(void *p) {
     vTaskDelay(500);
   }
 }
+#endif
 
 int main(void) {
   create_blinky_tasks();
@@ -64,9 +136,19 @@ int main(void) {
   fprintf(stderr, "Initialize UART\n");
   uart_lab__init(UART_3, peripheral_clock, baud_rate);
 
-  xTaskCreate(uart_write_task, "uart_write", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
-  xTaskCreate(uart_read_task, "uart_read", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+  uart__enable_receive_interrupt(UART_3);
+  NVIC_EnableIRQ(UART3_IRQn);
 
+  xTaskCreate(board_2_receiver_task, "receiver_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+  xTaskCreate(board_1_sender_task, "sender_task", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+
+#ifdef PART2
+  xTaskCreate(uart_read_intr, "uart_read_intr", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+  xTaskCreate(uart_write_task, "uart_write", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+#ifdef PART1
+  xTaskCreate(uart_read_task, "uart_read", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_LOW, NULL);
+#endif
+#endif
   puts("Starting RTOS");
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
