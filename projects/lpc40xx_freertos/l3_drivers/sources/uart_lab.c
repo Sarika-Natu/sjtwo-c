@@ -11,44 +11,61 @@
 
 // Private queue handle of our uart_lab.c
 static QueueHandle_t your_uart_rx_queue;
+static void power_on_peripheral(uart_number_e uart);
+static void set_iocon_for_uart(uart_number_e uart);
+static void your_receive_interrupt(void);
 
 static void power_on_peripheral(uart_number_e uart) {
   const uint32_t enable_uart2 = (1 << 24);
   const uint32_t enable_uart3 = (1 << 25);
 
-  if (UART_2 == uart) {
+  switch (uart) {
+  case UART_2:
     LPC_SC->PCONP |= enable_uart2;
-  } else if (UART_3 == uart) {
+    break;
+
+  case UART_3:
     LPC_SC->PCONP |= enable_uart3;
-  } else {
+    break;
+
+  default:
+    break;
   }
 }
 
 static void set_iocon_for_uart(uart_number_e uart) {
 
   const uint32_t func_mask = 0x07;
-  const uint32_t enable_uart2_func = 0x01;
+  const uint32_t enable_uart2_func = 0x02;
   const uint32_t enable_uart3_func = 0x02;
 
-  if (UART_2 == uart) {
-    LPC_IOCON->P0_10 &= func_mask;
-    LPC_IOCON->P0_10 |= enable_uart2_func;
-    LPC_IOCON->P0_11 &= func_mask;
-    LPC_IOCON->P0_11 |= enable_uart2_func;
-  } else if (UART_3 == uart) {
+  switch (uart) {
+  case UART_2:
+    LPC_IOCON->P2_8 &= func_mask;
+    LPC_IOCON->P2_8 |= enable_uart2_func;
+    LPC_IOCON->P2_9 &= func_mask;
+    LPC_IOCON->P2_9 |= enable_uart2_func;
+    break;
+
+  case UART_3:
     LPC_IOCON->P4_28 &= func_mask;
     LPC_IOCON->P4_28 |= enable_uart3_func;
     LPC_IOCON->P4_29 &= func_mask;
     LPC_IOCON->P4_29 |= enable_uart3_func;
-  } else {
+    break;
+
+  default:
+    break;
   }
 }
+
 // Private function of our uart_lab.c
 static void your_receive_interrupt(void) {
   uint32_t interrupt_identification = (0b010 << 1);
   const uint32_t receive_data_ready = (1 << 0);
+#if 1
   // TODO: Read the IIR register to figure out why you got interrupted
-  /*if (LPC_UART2->IIR == interrupt_identification) {
+  if (LPC_UART2->IIR == interrupt_identification) {
 
     // TODO: Based on IIR status, read the LSR register to confirm if there is data to be read
     while (!(LPC_UART2->LSR & receive_data_ready)) {
@@ -59,8 +76,10 @@ static void your_receive_interrupt(void) {
     const char byte = LPC_UART2->RBR;
     xQueueSendFromISR(your_uart_rx_queue, &byte, NULL);
     uint32_t clear_iir = LPC_UART2->IIR;
-    fprintf(stderr, "Recieve interrupt\n");
-  } else*/
+    // fprintf(stderr, "Recieve interrupt\n");
+  }
+#endif
+#if 0
   if (LPC_UART3->IIR == interrupt_identification) {
 
     // TODO: Based on IIR status, read the LSR register to confirm if there is data to be read
@@ -73,16 +92,17 @@ static void your_receive_interrupt(void) {
     xQueueSendFromISR(your_uart_rx_queue, &byte, NULL);
     uint32_t clear_iir = LPC_UART3->IIR;
     // fprintf(stderr, "Recieve interrupt\n");
-
-  } else {
   }
+#endif
 }
 
 // Public function to enable UART interrupt
 // TODO Declare this at the header file
 void uart__enable_receive_interrupt(uart_number_e uart_number) {
-  if (UART_2 == uart_number) {
-    uint32_t rbr_intr_enable = (1 << 0);
+  uint32_t rbr_intr_enable = (1 << 0);
+  switch (uart_number) {
+  case UART_2:
+
     // TODO: Use lpc_peripherals.h to attach your interrupt
     lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__UART2, your_receive_interrupt, "uart_intr");
 
@@ -92,10 +112,9 @@ void uart__enable_receive_interrupt(uart_number_e uart_number) {
 
     // TODO: Create your RX queue
     your_uart_rx_queue = xQueueCreate(10, sizeof(uint8_t));
+    break;
 
-  } else if (UART_3 == uart_number) {
-
-    uint32_t rbr_intr_enable = (1 << 0);
+  case UART_3:
     // TODO: Use lpc_peripherals.h to attach your interrupt
     lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__UART3, your_receive_interrupt, "uart_intr");
 
@@ -106,7 +125,10 @@ void uart__enable_receive_interrupt(uart_number_e uart_number) {
     // TODO: Create your RX queue
     your_uart_rx_queue = xQueueCreate(10, sizeof(uint8_t));
     // fprintf(stderr, "Character transmitted\n");
-  } else {
+    break;
+
+  default:
+    break;
   }
 }
 
@@ -128,7 +150,8 @@ void uart_lab__init(uart_number_e uart, uint32_t peripheral_clock, uint32_t baud
   uint16_t dlm_dll = 0;
 
   power_on_peripheral(uart);
-  if (UART_2 == uart) {
+  switch (uart) {
+  case UART_2:
     // b) Setup DLL, DLM, FDR, LCR registers
     LPC_UART2->LCR |= dlab_bit;
 
@@ -141,8 +164,9 @@ void uart_lab__init(uart_number_e uart, uint32_t peripheral_clock, uint32_t baud
 
     LPC_UART2->LCR &= ~word_len_sel_mask;
     LPC_UART2->LCR |= word_len_sel_8bit;
+    break;
 
-  } else if (UART_3 == uart) {
+  case UART_3:
     LPC_UART3->LCR |= dlab_bit;
 
     dlm_dll = (peripheral_clock / baud_rate / 16);
@@ -153,8 +177,10 @@ void uart_lab__init(uart_number_e uart, uint32_t peripheral_clock, uint32_t baud
 
     LPC_UART3->LCR &= ~word_len_sel_mask;
     LPC_UART3->LCR |= word_len_sel_8bit;
+    break;
 
-  } else {
+  default:
+    break;
   }
   set_iocon_for_uart(uart);
 }
@@ -164,7 +190,8 @@ bool uart_lab__polled_get(uart_number_e uart, char *input_byte) {
   bool ret_val = false;
   const uint32_t receive_data_ready = (1 << 0);
 
-  if (UART_2 == uart) {
+  switch (uart) {
+  case UART_2:
     // a) Check LSR for Receive Data Ready
     while (!(LPC_UART2->LSR & receive_data_ready)) {
       ;
@@ -172,14 +199,19 @@ bool uart_lab__polled_get(uart_number_e uart, char *input_byte) {
     // b) Copy data from RBR register to input_byte
     *input_byte = LPC_UART2->RBR;
     ret_val = true;
-  } else if (UART_3 == uart) {
+    break;
+
+  case UART_3:
     while (!(LPC_UART3->LSR & receive_data_ready)) {
       ;
     }
     *input_byte = LPC_UART3->RBR;
     ret_val = true;
+    break;
 
-  } else {
+  default:
+    ret_val = false;
+    break;
   }
   return ret_val;
 }
@@ -187,15 +219,18 @@ bool uart_lab__polled_get(uart_number_e uart, char *input_byte) {
 bool uart_lab__polled_put(uart_number_e uart, char output_byte) {
   bool ret_val = false;
   const uint32_t transmit_holding_register_empty = (1 << 5);
-  if (UART_2 == uart) {
+
+  switch (uart) {
+  case UART_2:
     // a) Check LSR for Transmit Hold Register Empty
     while (!(LPC_UART2->LSR & transmit_holding_register_empty)) {
     }
     // b) Copy output_byte to THR register
     LPC_UART2->THR = output_byte;
     ret_val = true;
+    break;
 
-  } else if (UART_3 == uart) {
+  case UART_3:
     while (!(LPC_UART3->LSR & transmit_holding_register_empty)) {
       ;
     }
@@ -205,7 +240,11 @@ bool uart_lab__polled_put(uart_number_e uart, char output_byte) {
     }
     ret_val = true;
     // fprintf(stderr, "Character transmitted\n");
-  } else {
+    break;
+
+  default:
+    ret_val = false;
+    break;
   }
   return ret_val;
 }
