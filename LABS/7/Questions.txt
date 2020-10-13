@@ -1,0 +1,14 @@
+SID:014529138
+Questions
+
+1. What is the difference between Asynchronous and Synchronous Communication?
+2. What is the difference between Bit Rate and Baud Rate?
+3. What are the uses of the keyword static? Differentiate between local static variable, global static variable and static function.
+4. What is the difference between global and static global variables?
+5. SPI is serial or parallel communication?
+6. Does SPI slave acknowledge the receipt of data?
+7. What is bit field in C ? What is the benefit of using it ?
+8. Can you have an embedded system without RTOS? If yes how can you achieve time critical operations?
+9. How can we reduce the interrupt latency?
+10. What is the difference between Mutex vs Semaphore? When to use mutex and when to use semaphore?
+	
