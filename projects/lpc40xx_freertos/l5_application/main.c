@@ -18,7 +18,9 @@ static void blink_task(void *params);
 static void uart_task(void *params);
 
 static QueueHandle_t switch_queue;
-#define PHighCHigh
+#define PLowCHigh
+//#define PHighCLow
+//#define PHighCHigh
 
 typedef enum { switch__off, switch__on } switch_e;
 
@@ -45,13 +47,17 @@ void producer(void *p) {
     const switch_e switch_value = get_switch_input_from_switch();
 
     // TODO: Print a message before xQueueSend()
-    printf("%s(), line %d, sending message\n", __FUNCTION__, __LINE__);
-    // Note: Use printf() and not fprintf(stderr, ...) because stderr is a polling printf
-    xQueueSend(switch_queue, &switch_value, 0);
-    // TODO: Print a message after xQueueSend()
-    printf("%s(), line %d, sending message\n", __FUNCTION__, __LINE__);
-
-    vTaskDelay(1000);
+    printf("%s(), line %d, tx\n", __FUNCTION__, __LINE__);
+// Note: Use printf() and not fprintf(stderr, ...) because stderr is a polling printf
+#if 1
+    if (!xQueueSend(switch_queue, &switch_value, 500)) {
+      // TODO: Print a message after xQueueSend()
+      printf("Queue send fail\n");
+    } else {
+      printf("        line %d, tx\n", __LINE__);
+    }
+#endif
+    vTaskDelay(300);
   }
 }
 
@@ -60,10 +66,16 @@ void consumer(void *p) {
   switch_e switch_value;
   while (1) {
     // TODO: Print a message before xQueueReceive()
-    printf("%s(), line %d, taking message\n", __FUNCTION__, __LINE__);
-    xQueueReceive(switch_queue, &switch_value, portMAX_DELAY);
-    // TODO: Print a message after xQueueReceive()
-    printf("%s(), line %d, taking message, Switch value: %d\n", __FUNCTION__, __LINE__, switch_value);
+    printf("%s(), line %d, rx \n", __FUNCTION__, __LINE__);
+    if (xQueueReceive(switch_queue, &switch_value, portMAX_DELAY)) {
+#if 0
+    if (xQueueReceive(switch_queue, &switch_value, 0)) {
+#endif
+      // TODO: Print a message after xQueueReceive()
+      printf("            line %d, Switch value: %d\n", __LINE__, switch_value);
+    } else {
+      printf("Queue receive failed\n");
+    }
   }
 }
 
