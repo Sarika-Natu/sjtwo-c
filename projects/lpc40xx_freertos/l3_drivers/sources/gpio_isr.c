@@ -2,7 +2,7 @@
 #include "gpio_isr.h"
 
 // Note: You may want another separate array for falling vs. rising edge callbacks
-static function_pointer_t gpio_callbacks[2] = {sem_isr, user_isr};
+static function_pointer_t gpio_callbacks[] = {sem_isr, user_isr};
 static void clear_pin_interrupt(gpio__port_e port, int interrupt_pin);
 static int read_pin_interrupt(gpio__port_e *port);
 void gpio__attach_interrupt(gpio__port_e port, uint32_t pin, gpio_interrupt_e interrupt_type,
@@ -13,7 +13,7 @@ void gpio__interrupt_dispatcher(void);
  * This function clears the interrupt flag for the requested port-pin
  */
 static void clear_pin_interrupt(gpio__port_e port, int interrupt_pin) {
-  fprintf(stderr, "Interrupt is cleared pin %d\n", interrupt_pin);
+  // fprintf(stderr, "Interrupt is cleared pin %d\n", interrupt_pin);
   if (GPIO__PORT_0 == port) {
     LPC_GPIOINT->IO0IntClr |= (1 << interrupt_pin);
   } else if (GPIO__PORT_2 == port) {
@@ -87,8 +87,8 @@ void gpio__interrupt_dispatcher(void) {
   const int interrupt_pin = read_pin_interrupt(&port);
   // fprintf(stderr, "Interrupt pin %d\n", interrupt_pin);
 
-  clear_pin_interrupt(port, interrupt_pin);
   function_pointer_t attached_user_handler = gpio_callbacks[interrupt_pin];
   // Invoke the user registered callback, and then clear the interrupt
   attached_user_handler();
+  clear_pin_interrupt(port, interrupt_pin);
 }

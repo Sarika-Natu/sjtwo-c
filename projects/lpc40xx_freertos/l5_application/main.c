@@ -37,7 +37,7 @@ static SemaphoreHandle_t switch_pressed_flashy;
  * user defined function
  */
 void user_isr(void) {
-  fprintf(stderr, "Interrupt is hit 30\n");
+  // fprintf(stderr, "Interrupt is hit 30\n");
   xSemaphoreGiveFromISR(switch_pressed_flashy, NULL);
 }
 /*************************************************************************************
@@ -154,7 +154,7 @@ int main(void) {
   NVIC_EnableIRQ(GPIO_IRQn); // Enable interrupt gate for the GPIO
 
   xTaskCreate(sleep_on_sem_task, "sem", (512U * 4) / sizeof(void *), (void *)&port1_led8, PRIORITY_LOW, NULL);
-  xTaskCreate(sleep_on_flashy_task, "sem", (512U * 4) / sizeof(void *), (void *)&flashy_led, PRIORITY_LOW, NULL);
+  xTaskCreate(sleep_on_flashy_task, "sem_flash", (512U * 4) / sizeof(void *), (void *)&flashy_led, PRIORITY_LOW, NULL);
 #ifdef PART0
   gpio_s port0_pin29 = gpio__construct(GPIO__PORT_0, 29);
   gpio_s port1_pin8 = gpio__construct(GPIO__PORT_1, 8);
