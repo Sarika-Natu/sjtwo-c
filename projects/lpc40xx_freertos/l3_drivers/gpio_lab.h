@@ -42,3 +42,9 @@ void vLedOff(uint8_t port, uint8_t pin_num);
 void vSetasOutput(uint8_t port, uint8_t pin_num);
 
 void vSetasInput(uint8_t port, uint8_t pin_num);
+
+typedef enum {
+  PORT0 = 0,
+  PORT1,
+  PORT2,
+} port_t;
