@@ -64,8 +64,8 @@ static void vBlinkLED(void *task_parameter) {
     }
 }
 static void vControlLED(void *task_parameter) {
+    const port_pin_s *port_led = (port_pin_s *)(task_parameter);
     while (true) {
-        const port_pin_s *port_led = (port_pin_s *)(task_parameter);
         // Note: There is no vTaskDelay() here, but we use sleep mechanism while waiting for the binary semaphore (signal)
         if (xSemaphoreTake(switch_press_indication, 1000)) {
             vCtrlLed(port_led->port, port_led->pin, true);
