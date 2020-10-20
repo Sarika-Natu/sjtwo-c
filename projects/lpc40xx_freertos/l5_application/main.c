@@ -22,9 +22,9 @@ int main(void) {
   create_uart_task();
 
   puts("Starting RTOS");
-  xTaskCreate(task_one, "task1", configMINIMAL_STACK_SIZE, NULL, PRIORITY_HIGH, NULL);
-  xTaskCreate(task_two, "task2", configMINIMAL_STACK_SIZE, NULL, PRIORITY_LOW, NULL);
-  vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
+  xTaskCreate(task_one, "task1", (350U) / sizeof(void *), NULL, PRIORITY_HIGH, NULL);
+  xTaskCreate(task_two, "task2", (350U) / sizeof(void *), NULL, PRIORITY_LOW, NULL);
+  vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fail
 
   return 0;
 }
