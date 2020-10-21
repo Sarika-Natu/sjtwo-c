@@ -15,14 +15,29 @@ static void blink_task(void *params);
 static void uart_task(void *params);
 
 int main(void) {
+  uint8_t dow, hours;
+
   create_blinky_tasks();
   create_uart_task();
-
+#if 0
+  get_month_and_year_from_ctime_register(&dow, &hours);
+#endif
   puts("Starting RTOS");
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
   return 0;
 }
+
+#if 0
+static void get_month_and_year_from_ctime_register(uint8_t *dow, uint8_t *hours) {
+  const uint32_t value = CTIME0;
+  const uint8_t dow_mask = 0x1F;
+  const uint8_t hours_mask = 0x03;
+
+  *hours = (value >> 16) & hours_mask;
+  *dow = (value >> 24) & dow_mask;
+}
+#endif
 
 static void create_blinky_tasks(void) {
   /**
