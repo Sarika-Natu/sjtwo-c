@@ -40,9 +40,33 @@ void consumer(void *p) {
   }
 }
 
+#ifdef SPI_Q
+uint8_t get_byte_of_data(const uint32_t address) {
+  const uint8_t opcode = 0x1B;
+  const uint8_t dummy_byte = 0xFF;
+  uint8_t data = 0;
+
+  device_cs();
+  {
+    exchange_spi_byte(opcode);
+    exchange_spi_byte((address >> 16) & 0xFF);
+    exchange_spi_byte((address >> 8) & 0xFF);
+    exchange_spi_byte((address >> 0) & 0xFF);
+    data = exchange_spi_byte(dummy_byte);
+  }
+  device_ds();
+
+  return data;
+}
+#endif
+
 int main(void) {
 #if 0
   uint8_t dow, hours;
+#endif
+
+#ifdef SPI_Q
+  uint8_t data = get_byte_of_data(0xFFEEDD);
 #endif
 
   signal = xQueueCreate(5, sizeof(char));
