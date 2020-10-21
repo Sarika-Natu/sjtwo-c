@@ -53,6 +53,10 @@ my_s_pack s_pack;
 my_s_pack *s_pack_ptr;
 my_s_pack_pragma s_pack_pragma;
 
+
+void struct_as_pointer_1(my_s_pack *p);
+void struct_as_pointer_2(my_s_pack_pragma p);
+
 int main(void) {
 
     puts("Starting RTOS");
@@ -90,7 +94,36 @@ int main(void) {
            "floats 0x%p 0x%p\n"
            "chars  0x%p 0x%p\n",
            sizeof(s_pack_pragma), &s_pack_pragma.f1, &s_pack_pragma.f2, &s_pack_pragma.c1, &s_pack_pragma.c2);
+
+
+    struct_as_pointer_1(&s_pack); // passing address of the structure.
+    // struct_as_pointer_1(s_pack_ptr);//cannot pass pointer to the structure.
+    struct_as_pointer_2(s_pack_pragma); // passing structure.
+
     vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
     return 0;
+}
+
+// Passing the structure and catching it using pointer.
+void struct_as_pointer_1(my_s_pack *p) {
+    p->f1 = 1.4;
+    p->f2 = 5.4;
+    p->c1 = 'c';
+    p->c2 = 's';
+
+    printf("\nValue of structure elements is\n"
+           "floats f1 %f and f2 %f\n"
+           "chars c1 %c and c2 %c\n",
+           p->f1, p->f2, p->c1, p->c2);
+}
+
+// Zero out the struct
+void struct_as_pointer_2(my_s_pack_pragma p) {
+    memset(&p, 0, sizeof(p));//arguments: address or the structure/pointer(&p+2--> start from 3), data to be written, size of structure
+
+    printf("\nValue of structure elements is\n"
+           "floats f1 %.2f and f2 %.2f\n"
+           "chars c1 %c and c2 %c\n",
+           p.f1, p.f2, p.c1, p.c2);
 }
