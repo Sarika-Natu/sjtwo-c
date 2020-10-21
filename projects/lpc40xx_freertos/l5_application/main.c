@@ -9,16 +9,49 @@
 #include "periodic_scheduler.h"
 #include "sj2_cli.h"
 
+#include "queue.h"
+
 static void create_blinky_tasks(void);
 static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
 
+static QueueHandle_t signal;
+
+void generator(void *p) {
+  char x = 'A';
+
+  while (1) {
+    if (!xQueueSend(signal, &x, 0)) {
+      printf("Queue send failed");
+    }
+    vTaskDelay(1000);
+  }
+}
+
+void consumer(void *p) {
+  char y;
+  while (1) {
+    if (xQueueReceive(signal, &y, 1500)) {
+      printf("Received %c\n", y);
+    } else {
+      printf("Queue receive failed");
+    }
+  }
+}
+
 int main(void) {
+#if 0
   uint8_t dow, hours;
+#endif
+
+  signal = xQueueCreate(5, sizeof(char));
 
   create_blinky_tasks();
   create_uart_task();
+  xTaskCreate(generator, "generator", (512 * 4) / sizeof(void *), NULL, PRIORITY_LOW, NULL);
+  xTaskCreate(consumer, "consumer", (512 * 4) / sizeof(void *), NULL, PRIORITY_LOW, NULL);
+
 #if 0
   get_month_and_year_from_ctime_register(&dow, &hours);
 #endif
