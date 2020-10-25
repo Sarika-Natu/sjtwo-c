@@ -9,14 +9,104 @@
 #include "periodic_scheduler.h"
 #include "sj2_cli.h"
 
+#include "acceleration.h"
+#include "ff.h"
+#include "queue.h"
+#include <string.h>
+
 static void create_blinky_tasks(void);
 static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
 
+void write_file_using_fatfs_pi(acceleration__axis_data_s *value);
+void producer(void *p);
+void consumer(void *p);
+
+static QueueHandle_t switch_queue;
+
+void write_file_using_fatfs_pi(acceleration__axis_data_s *value) {
+  const char *filename = "sensor.txt";
+  FIL file;
+  TickType_t ticks = 0;
+  UINT bytes_written = 0;
+  FRESULT result = f_open(&file, filename, (FA_WRITE | FA_OPEN_APPEND));
+
+  for (char i = 0; i < 10; i++) {
+
+    if (FR_OK == result) {
+      char string[64];
+      ticks = xTaskGetTickCount();
+      sprintf(string, "| ticks:%li | x-axis=%i | y-axis=%i | z-axis=%i |\n", ticks, value->x, value->y, value->z);
+
+      if (FR_OK == f_write(&file, string, strlen(string), &bytes_written)) {
+      } else {
+        printf("ERROR: Failed to write data to file\n");
+      }
+    } else {
+      printf("ERROR: Failed to open: %s\n", filename);
+    }
+    value++;
+    f_sync(&file);
+  }
+
+  f_close(&file);
+}
+
+void producer(void *p) {
+  acceleration__axis_data_s average = {0, 0, 0};
+  acceleration__axis_data_s sensor_reading;
+  int i = 0;
+
+  while (1) {
+    while (i < 100) {
+      const acceleration__axis_data_s sensor_data = acceleration__get_data();
+      average.x += sensor_data.x;
+      average.y += sensor_data.y;
+      average.z += sensor_data.z;
+      i++;
+    }
+    sensor_reading.x = (int)((double)average.x / 100.0);
+    average.x = 0;
+    sensor_reading.y = (int)((double)average.y / 100.0);
+    average.y = 0;
+    sensor_reading.z = (int)((double)average.z / 100.0);
+    average.z = 0;
+    i = 0;
+
+    if (!xQueueSend(switch_queue, &sensor_reading, 500)) {
+      printf("Queue send fail\n");
+    } else {
+    }
+    vTaskDelay(100);
+  }
+}
+
+void consumer(void *p) {
+  acceleration__axis_data_s sensor_data[10], get_data;
+  while (1) {
+    if (xQueueReceive(switch_queue, &get_data, portMAX_DELAY)) {
+      printf("Sensor value: | x-axis=%i | y-axis=%i | z-axis=%i |\n", get_data.x, get_data.y, get_data.z);
+      for (int i = 0; i < 10; i++) {
+        sensor_data[i] = get_data;
+      }
+      write_file_using_fatfs_pi((acceleration__axis_data_s *)&sensor_data);
+    } else {
+      printf("Queue receive failed\n");
+    }
+  }
+}
+
 int main(void) {
   create_blinky_tasks();
   create_uart_task();
+
+  acceleration__init();
+
+  switch_queue = xQueueCreate(10, sizeof(acceleration__axis_data_s));
+
+  xTaskCreate(producer, "producer", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_MEDIUM, NULL);
+  xTaskCreate(consumer, "consumer", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_MEDIUM, NULL);
 
   puts("Starting RTOS");
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
