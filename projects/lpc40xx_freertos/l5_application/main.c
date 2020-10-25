@@ -10,6 +10,7 @@
 #include "sj2_cli.h"
 
 #include "acceleration.h"
+#include "event_groups.h"
 #include "ff.h"
 #include "queue.h"
 #include <string.h>
@@ -24,6 +25,10 @@ void producer(void *p);
 void consumer(void *p);
 
 static QueueHandle_t switch_queue;
+static EventGroupHandle_t watchdog_eventgrp;
+
+#define BIT0 0x01
+#define BIT1 0x02
 
 void write_file_using_fatfs_pi(acceleration__axis_data_s *value) {
   const char *filename = "sensor.txt";
@@ -78,6 +83,7 @@ void producer(void *p) {
       printf("Queue send fail\n");
     } else {
     }
+    xEventGroupSetBits(watchdog_eventgrp, BIT0);
     vTaskDelay(100);
   }
 }
@@ -86,13 +92,32 @@ void consumer(void *p) {
   acceleration__axis_data_s sensor_data[10], get_data;
   while (1) {
     if (xQueueReceive(switch_queue, &get_data, portMAX_DELAY)) {
-      printf("Sensor value: | x-axis=%i | y-axis=%i | z-axis=%i |\n", get_data.x, get_data.y, get_data.z);
+      // printf("Sensor value: | x-axis=%i | y-axis=%i | z-axis=%i |\n", get_data.x, get_data.y, get_data.z);
       for (int i = 0; i < 10; i++) {
         sensor_data[i] = get_data;
       }
       write_file_using_fatfs_pi((acceleration__axis_data_s *)&sensor_data);
     } else {
       printf("Queue receive failed\n");
+    }
+    xEventGroupSetBits(watchdog_eventgrp, BIT1);
+  }
+}
+
+void watchdog(void *p) {
+  while (1) {
+    vTaskDelay(200);
+    EventBits_t CheckBits = xEventGroupWaitBits(watchdog_eventgrp, (BIT0 | BIT1), 1, 1, 1000);
+    if ((CheckBits & (BIT0 | BIT1)) == (BIT0 | BIT1)) {
+      printf("Watchdog task is able to verify the check-in of producer and consumer tasks\n");
+    } else if ((CheckBits & BIT0) != BIT0) {
+      printf("Producer task failed check-in\n");
+    } else if ((CheckBits & BIT1) != BIT1) {
+      printf("Consumer task failed check-in\n");
+    } else if ((CheckBits & (BIT0 | BIT1)) != (BIT0 | BIT1)) {
+      printf("Producer and Consumer task failed check-in. Timeout occured\n");
+    } else {
+      printf("Timeout occured\n");
     }
   }
 }
@@ -104,9 +129,11 @@ int main(void) {
   acceleration__init();
 
   switch_queue = xQueueCreate(10, sizeof(acceleration__axis_data_s));
+  watchdog_eventgrp = xEventGroupCreate();
 
   xTaskCreate(producer, "producer", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_MEDIUM, NULL);
   xTaskCreate(consumer, "consumer", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_MEDIUM, NULL);
+  xTaskCreate(watchdog, "watchdog", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_HIGH, NULL);
 
   puts("Starting RTOS");
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
