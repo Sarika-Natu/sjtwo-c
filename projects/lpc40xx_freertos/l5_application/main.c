@@ -9,20 +9,92 @@
 #include "periodic_scheduler.h"
 #include "sj2_cli.h"
 
+#include "queue.h"
+
 static void create_blinky_tasks(void);
 static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
 
+static QueueHandle_t signal;
+
+void generator(void *p) {
+  char x = 'A';
+
+  while (1) {
+    if (!xQueueSend(signal, &x, 0)) {
+      printf("Queue send failed");
+    }
+    vTaskDelay(1000);
+  }
+}
+
+void consumer(void *p) {
+  char y;
+  while (1) {
+    if (xQueueReceive(signal, &y, 1500)) {
+      printf("Received %c\n", y);
+    } else {
+      printf("Queue receive failed");
+    }
+  }
+}
+
+#ifdef SPI_Q
+uint8_t get_byte_of_data(const uint32_t address) {
+  const uint8_t opcode = 0x1B;
+  const uint8_t dummy_byte = 0xFF;
+  uint8_t data = 0;
+
+  device_cs();
+  {
+    exchange_spi_byte(opcode);
+    exchange_spi_byte((address >> 16) & 0xFF);
+    exchange_spi_byte((address >> 8) & 0xFF);
+    exchange_spi_byte((address >> 0) & 0xFF);
+    data = exchange_spi_byte(dummy_byte);
+  }
+  device_ds();
+
+  return data;
+}
+#endif
+
 int main(void) {
+#if 0
+  uint8_t dow, hours;
+#endif
+
+#ifdef SPI_Q
+  uint8_t data = get_byte_of_data(0xFFEEDD);
+#endif
+
+  signal = xQueueCreate(5, sizeof(char));
+
   create_blinky_tasks();
   create_uart_task();
+  xTaskCreate(generator, "generator", (512 * 4) / sizeof(void *), NULL, PRIORITY_LOW, NULL);
+  xTaskCreate(consumer, "consumer", (512 * 4) / sizeof(void *), NULL, PRIORITY_LOW, NULL);
 
+#if 0
+  get_month_and_year_from_ctime_register(&dow, &hours);
+#endif
   puts("Starting RTOS");
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
   return 0;
 }
+
+#if 0
+static void get_month_and_year_from_ctime_register(uint8_t *dow, uint8_t *hours) {
+  const uint32_t value = CTIME0;
+  const uint8_t dow_mask = 0x1F;
+  const uint8_t hours_mask = 0x03;
+
+  *hours = (value >> 16) & hours_mask;
+  *dow = (value >> 24) & dow_mask;
+}
+#endif
 
 static void create_blinky_tasks(void) {
   /**
