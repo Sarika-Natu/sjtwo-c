@@ -9,14 +9,169 @@
 #include "periodic_scheduler.h"
 #include "sj2_cli.h"
 
+#include "acceleration.h"
+#include "cli_handlers.h"
+#include "event_groups.h"
+#include "ff.h"
+#include "queue.h"
+#include <string.h>
+
 static void create_blinky_tasks(void);
 static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
 
+void write_faults_in_file_using_fatfs_pi(EventBits_t *checkbits);
+void write_sensor_data_in_file_using_fatfs_pi(acceleration__axis_data_s *sensordata);
+void producer(void *p);
+void consumer(void *p);
+void watchdog(void *p);
+app_cli_status_e cli__task_ctrl(app_cli__argument_t argument, sl_string_t user_input_minus_command_name,
+                                app_cli__print_string_function cli_output);
+
+static QueueHandle_t switch_queue;
+static EventGroupHandle_t watchdog_eventgrp;
+
+#define BIT0 0x01
+#define BIT1 0x02
+
+void write_faults_in_file_using_fatfs_pi(EventBits_t *checkbits) {
+  const char *filename = "watchdog.txt";
+  FIL file;
+  UINT bytes_written = 0;
+  FRESULT result = f_open(&file, filename, (FA_WRITE | FA_OPEN_APPEND));
+
+  if (FR_OK == result) {
+    char string[64];
+    if (*checkbits == BIT1) {
+      sprintf(string, "Event occurred. Producer task was frozen\n");
+    } else if (*checkbits == BIT0) {
+      sprintf(string, "Event occurred. Consumer task was frozen\n");
+    } else if (*checkbits == (BIT0 | BIT1)) {
+      sprintf(string, "No event occurred\n");
+    } else {
+      sprintf(string, "Event occurred. Producer and Consumer tasks were frozen\n");
+    }
+    if (FR_OK == f_write(&file, string, strlen(string), &bytes_written)) {
+    } else {
+      printf("ERROR: Failed to write data to file\n");
+    }
+  } else {
+    printf("ERROR: Failed to open: %s\n", filename);
+  }
+  f_close(&file);
+}
+
+void write_sensor_data_in_file_using_fatfs_pi(acceleration__axis_data_s *sensordata) {
+  const char *filename = "sensor.txt";
+  FIL file;
+  TickType_t ticks = 0;
+  UINT bytes_written = 0;
+  FRESULT result = f_open(&file, filename, (FA_WRITE | FA_OPEN_APPEND));
+
+  for (char i = 0; i < 10; i++) {
+
+    if (FR_OK == result) {
+      char string[64];
+      ticks = xTaskGetTickCount();
+      sprintf(string, "| ticks:%li | x-axis=%i | y-axis=%i | z-axis=%i |\n", ticks, sensordata->x, sensordata->y,
+              sensordata->z);
+
+      if (FR_OK == f_write(&file, string, strlen(string), &bytes_written)) {
+      } else {
+        printf("ERROR: Failed to write data to file\n");
+      }
+    } else {
+      printf("ERROR: Failed to open: %s\n", filename);
+    }
+    sensordata++;
+    f_sync(&file);
+  }
+
+  f_close(&file);
+}
+
+void producer(void *p) {
+  acceleration__axis_data_s average = {0, 0, 0};
+  acceleration__axis_data_s sensor_reading;
+  int i = 0;
+
+  while (1) {
+    while (i < 100) {
+      const acceleration__axis_data_s sensor_data = acceleration__get_data();
+      average.x += sensor_data.x;
+      average.y += sensor_data.y;
+      average.z += sensor_data.z;
+      i++;
+    }
+    sensor_reading.x = (int)((double)average.x / 100.0);
+    average.x = 0;
+    sensor_reading.y = (int)((double)average.y / 100.0);
+    average.y = 0;
+    sensor_reading.z = (int)((double)average.z / 100.0);
+    average.z = 0;
+    i = 0;
+
+    if (!xQueueSend(switch_queue, &sensor_reading, 500)) {
+      printf("Queue send fail\n");
+    } else {
+    }
+    xEventGroupSetBits(watchdog_eventgrp, BIT0);
+    vTaskDelay(100);
+  }
+}
+
+void consumer(void *p) {
+  acceleration__axis_data_s sensor_data[10], get_data;
+  while (1) {
+    if (xQueueReceive(switch_queue, &get_data, portMAX_DELAY)) {
+      // printf("Sensor value: | x-axis=%i | y-axis=%i | z-axis=%i |\n", get_data.x, get_data.y, get_data.z);
+      for (int i = 0; i < 10; i++) {
+        sensor_data[i] = get_data;
+      }
+      write_sensor_data_in_file_using_fatfs_pi((acceleration__axis_data_s *)&sensor_data);
+    } else {
+      printf("Queue receive failed\n");
+    }
+    xEventGroupSetBits(watchdog_eventgrp, BIT1);
+  }
+}
+
+void watchdog(void *p) {
+  while (1) {
+    vTaskDelay(200);
+    EventBits_t CheckBits = xEventGroupWaitBits(watchdog_eventgrp, (BIT0 | BIT1), pdFALSE, pdTRUE, 500);
+    write_faults_in_file_using_fatfs_pi((EventBits_t *)&CheckBits);
+    switch (CheckBits) {
+    case (BIT0 | BIT1):
+      printf("Watchdog task is able to verify the check-in of producer and consumer tasks\n");
+      break;
+    case BIT0:
+      printf("Producer task checked-in, but Consumer didnt checked-in\n");
+      break;
+    case BIT1:
+      printf("Consumer task checked-in, but Producer didnt checked-in\n");
+      break;
+    default:
+      printf("Producer and Consumer tasks failed check-in. Timeout occurred\n");
+      break;
+    }
+    xEventGroupClearBits(watchdog_eventgrp, (BIT0 | BIT1));
+  }
+}
+
 int main(void) {
   create_blinky_tasks();
   create_uart_task();
+
+  acceleration__init();
+
+  switch_queue = xQueueCreate(10, sizeof(acceleration__axis_data_s));
+  watchdog_eventgrp = xEventGroupCreate();
+
+  xTaskCreate(producer, "producer", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_MEDIUM, NULL);
+  xTaskCreate(consumer, "consumer", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_MEDIUM, NULL);
+  xTaskCreate(watchdog, "watchdog", (512U * 4) / sizeof(void *), (void *)NULL, PRIORITY_HIGH, NULL);
 
   puts("Starting RTOS");
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
