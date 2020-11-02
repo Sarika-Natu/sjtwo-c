@@ -6,6 +6,8 @@
 #include "board_io.h"
 #include "common_macros.h"
 #include "gpio.h"
+#include "i2c.h"
+#include "i2c_slave_init.h"
 #include "periodic_scheduler.h"
 #include "sj2_cli.h"
 
@@ -14,9 +16,32 @@ static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
 
+static void set_i2c_iocon(void) {
+  const uint32_t func_mask = 0x07;
+  const uint32_t enable_i2c1_func = 0x03;
+  const uint32_t enable_i2c2_func = 0x02;
+  const uint32_t hi_drive_mode = (1 << 9);
+  const uint32_t glitch_enable = (1 << 8);
+
+  // I2C_SDA pin
+  LPC_IOCON->P0_0 &= ~(func_mask | hi_drive_mode | glitch_enable);
+  LPC_IOCON->P0_0 |= enable_i2c1_func;
+  // I2C_SCL pin
+  LPC_IOCON->P0_1 &= ~(func_mask | hi_drive_mode | glitch_enable);
+  LPC_IOCON->P0_1 |= enable_i2c1_func;
+
+  LPC_IOCON->P0_10 &= ~(func_mask | hi_drive_mode | glitch_enable);
+  LPC_IOCON->P0_10 |= enable_i2c2_func;
+  // I2C_SCL pin
+  LPC_IOCON->P0_11 &= ~(func_mask | hi_drive_mode | glitch_enable);
+  LPC_IOCON->P0_11 |= enable_i2c2_func;
+}
+
 int main(void) {
   create_blinky_tasks();
   create_uart_task();
+  set_i2c_iocon();
+  i2c2__slave_init(0x08);
 
   puts("Starting RTOS");
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
