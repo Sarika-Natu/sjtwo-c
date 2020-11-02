@@ -13,6 +13,7 @@ static void peripherals_init__startup_sequence(void);
 static const char *peripherals_init__mount_sd_card(void);
 static void peripherals_init__uart0_init(void);
 static void peripherals_init__i2c_init(void);
+static void peripherals_init__i2c_1_init(void);
 
 void peripherals_init(void) {
   board_io__initialize();
@@ -30,6 +31,8 @@ void peripherals_init(void) {
   printf("\n%s\n%s(): Low level startup\n%s\n", line, __FUNCTION__, mount_info);
 
   peripherals_init__i2c_init();
+
+  peripherals_init__i2c_1_init();
 }
 
 static void peripherals_init__startup_sequence(void) {
@@ -88,6 +91,20 @@ static void peripherals_init__i2c_init(void) {
 
   for (unsigned slave_address = 2; slave_address <= 254; slave_address += 2) {
     if (i2c__detect(I2C__2, slave_address)) {
+      printf("I2C2 slave detected at address: 0x%02X\n", slave_address);
+    }
+  }
+  printf("I2C2 initialized done");
+}
+
+static void peripherals_init__i2c_1_init(void) {
+  printf("I2C1 init");
+  const uint32_t i2c_speed_hz = UINT32_C(400) * 1000;
+  i2c__initialize(I2C__1, i2c_speed_hz, clock__get_peripheral_clock_hz());
+  printf("I2C1 init done");
+
+  for (unsigned slave_address = 2; slave_address <= 254; slave_address += 2) {
+    if (i2c__detect(I2C__1, slave_address)) {
       printf("I2C slave detected at address: 0x%02X\n", slave_address);
     }
   }

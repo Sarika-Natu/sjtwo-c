@@ -9,7 +9,7 @@
 #include "lpc_peripherals.h"
 
 /// Set to non-zero to enable debugging, and then you can use I2C__DEBUG_PRINTF()
-#define I2C__ENABLE_DEBUGGING 1
+#define I2C__ENABLE_DEBUGGING 0
 
 #if I2C__ENABLE_DEBUGGING
 #include <stdio.h>
@@ -262,6 +262,7 @@ static bool i2c__handle_state_machine(i2c_s *i2c) {
     I2C__STATE_START = 0x08,
     I2C__STATE_REPEAT_START = 0x10,
     I2C__STATE_ARBRITRATION_LOST = 0x38,
+    I2C__STATE_STOP = 0xA0,
 
     // Master Transmitter States (MT):
     I2C__STATE_MT_SLAVE_ADDR_ACK = 0x18,
@@ -269,11 +270,28 @@ static bool i2c__handle_state_machine(i2c_s *i2c) {
     I2C__STATE_MT_SLAVE_DATA_ACK = 0x28,
     I2C__STATE_MT_SLAVE_DATA_NACK = 0x30,
 
+    // Slave Receiver States (SR):
+    I2C__STATE_SR_MASTER_ADDR_ACK = 0x60,
+    I2C__STATE_SR_MASTER_ADDR_NACK = 0x68,
+    I2C__STATE_SR_MASTER_DATA_ACK = 0x80,
+    I2C__STATE_SR_MASTER_DATA_NACK = 0x88,
+    I2C__STATE_SR_MASTER_GENCALL_ACK = 0x70,
+    I2C__STATE_SR_MASTER_GENCALL_NACK = 0x78,
+    I2C__STATE_SR_MASTER_GENDATA_ACK = 0x90,
+    I2C__STATE_SR_MASTER_GENDATA_NACK = 0x98,
+
     // Master Receiver States (MR):
     I2C__STATE_MR_SLAVE_READ_ACK = 0x40,
     I2C__STATE_MR_SLAVE_READ_NACK = 0x48,
     I2C__STATE_MR_SLAVE_ACK_SENT = 0x50,
     I2C__STATE_MR_SLAVE_NACK_SENT = 0x58,
+
+    // Slave Transmitter States (ST):
+    I2C__STATE_ST_MASTER_ADDR_ACK = 0xA8,
+    I2C__STATE_ST_MASTER_ADDR_NACK = 0xB0,
+    I2C__STATE_ST_MASTER_DATA_ACK = 0xB8,
+    I2C__STATE_ST_MASTER_LASTDATA_ACK = 0x60,
+    I2C__STATE_ST_MASTER_LASTDATA_NACK = 0x68
   };
 
   bool stop_sent = false;
