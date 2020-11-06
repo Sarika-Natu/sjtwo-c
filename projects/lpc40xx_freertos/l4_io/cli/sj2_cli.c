@@ -34,10 +34,16 @@ void sj2_cli__init(void) {
                                              "tasklist <time>' will display CPU utilization within this time window.",
                                          .app_cli_handler = cli__task_list};
 
+  static app_cli__command_s task_orientation = {.command_name = "orientation",
+                                                .help_message_for_command = "orientation on <task name>\n"
+                                                                            "orientation off <task name>\n",
+                                                .app_cli_handler = cli__task_orientation};
+
   // Add your CLI commands in descending sorted order
   app_cli__add_command_handler(&sj2_cli_struct, &task_list);
   app_cli__add_command_handler(&sj2_cli_struct, &i2c);
   app_cli__add_command_handler(&sj2_cli_struct, &crash);
+  app_cli__add_command_handler(&sj2_cli_struct, &task_orientation);
 
   // In case other tasks are hogging the CPU, it would be useful to run the CLI
   // at high priority to at least be able to see what is going on
