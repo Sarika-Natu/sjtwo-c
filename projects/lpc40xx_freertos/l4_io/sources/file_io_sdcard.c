@@ -5,7 +5,7 @@
 
 FRESULT file_read(const char *filename, void *store_data_buffer, uint32_t bytes_to_read, UINT *bytes_read) {
   FRESULT result;
-  FIL file;
+    FIL file;
 
   result = f_open(&file, filename, FA_OPEN_EXISTING | FA_READ);
   if (FR_OK == result) {
@@ -19,6 +19,18 @@ FRESULT file_read(const char *filename, void *store_data_buffer, uint32_t bytes_
   } else {
     printf("ERROR: Failed to open: %s\n", filename);
   }
-
   return result;
+}
+
+unsigned long file_read(const char *filename) {
+    unsigned long size_of_file = 0;
+    FIL file;
+
+    FRESULT result = f_open(&file, filename, FA_OPEN_ALWAYS);
+
+    if (FR_OK == result) {
+        size_of_file = f_size(&file);
+        f_close(&file);
+    }
+    return size_of_file;
 }

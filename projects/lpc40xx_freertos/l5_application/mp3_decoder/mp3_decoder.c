@@ -1,6 +1,42 @@
 
 #include "mp3_decoder.h"
 
+static void mp3_configure_gpio(void);
+static void mp3_cs(void);
+static void mp3_ds(void);
+static void mp3_datacs(void);
+static void mp3_datads(void);
+static void mp3_reset_high(void);
+static void mp3_reset_low(void);
+static void mp3_write(uint8_t opcode, uint16_t data);
+uint16_t mp3_read_data(uint8_t opcode);
+
+static void mp3_setmode(void);
+static void mp3_setclockf(void);
+static void mp3_audata(void);
+static void mp3_volume(void);
+
+/*******************************************************************************
+ *
+ *                      P U B L I C    F U N C T I O N S
+ *
+ ******************************************************************************/
+
+void mp3_init(void) {
+  ssp1__initialize();
+
+  mp3_configure_gpio();
+  mp3_setmode();
+  mp3_setclockf();
+  mp3_audata();
+  mp3_volume();
+}
+
+/*******************************************************************************
+ *
+ *                      P R I V A T E    F U N C T I O N S
+ *
+ ******************************************************************************/
 static void mp3_configure_gpio(void) {
   const uint8_t ssp1_sck = 7;
   const uint8_t ssp1_miso = 8;
@@ -31,6 +67,30 @@ static void mp3_ds(void) {
   gpio__set(mp3_chipsel_gpio);
 }
 
+static void mp3_datacs(void) {
+  const uint8_t mp3_datacs = 0;
+  const gpio_s mp3_datacs_gpio = {GPIO__PORT_0, mp3_datacs};
+  gpio__reset(mp3_datacs_gpio);
+}
+
+static void mp3_datads(void) {
+  const uint8_t mp3_datacs = 0;
+  const gpio_s mp3_datacs_gpio = {GPIO__PORT_0, mp3_datacs};
+  gpio__set(mp3_datacs_gpio);
+}
+
+static void mp3_reset_high(void) {
+  const uint8_t mp3_reset = 18;
+  const gpio_s mp3_reset_gpio = {GPIO__PORT_0, mp3_reset};
+  gpio__set(mp3_reset_gpio);
+}
+
+static void mp3_reset_low(void) {
+  const uint8_t mp3_reset = 18;
+  const gpio_s mp3_reset_gpio = {GPIO__PORT_0, mp3_reset};
+  gpio__reset(mp3_reset_gpio);
+}
+
 static void mp3_write(uint8_t opcode, uint16_t data) {
   const uint8_t byte_mask = 0xFF;
   const uint8_t one_byte = 8;
@@ -47,6 +107,25 @@ static void mp3_write(uint8_t opcode, uint16_t data) {
   mp3_ds();
 }
 
+uint16_t mp3_read_data(uint8_t opcode) {
+  uint16_t data = 0;
+  const uint8_t dummy_byte = 0xFF;
+  const uint8_t one_byte = 8;
+
+  mp3_cs();
+  {
+    (void)ssp1__exchange_byte(MP3_READ);
+    (void)ssp1__exchange_byte(opcode);
+    uint8_t data_msb = ssp1__exchange_byte(dummy_byte);
+    uint8_t data_lsb = ssp1__exchange_byte(dummy_byte);
+    data = (data_msb << one_byte);
+    data |= data_lsb;
+  }
+  mp3_ds();
+
+  return data;
+}
+
 static void mp3_setmode(void) {
   const uint16_t SM_SDINEW = (1 << 11);
   const uint16_t SM_LINE1 = (1 << 14);
@@ -54,9 +133,20 @@ static void mp3_setmode(void) {
   mp3_write(SCI_MODE, mp3_mode);
 }
 
-void mp3_init(void) {
-  ssp1__initialize();
+static void mp3_setclockf(void) {
+  const uint16_t SC_MULT = (0b110 << 13);
+  const uint16_t SC_ADD = (0 << 11);
+  const uint16_t SC_FREQ = (0 << 0);
+  uint16_t mp3_clockf = (SC_MULT | SC_ADD | SC_FREQ);
+  mp3_write(SCI_CLOCKF, mp3_clockf);
+}
 
-  mp3_configure_gpio();
-  mp3_setmode();
+static void mp3_audata(void) {
+  const uint16_t stereo_mode = 0xAC80;
+  mp3_write(SCI_AUDATA, stereo_mode);
+}
+
+static void mp3_volume(void) {
+  const uint16_t mid_vol = 0x7FFF;
+  mp3_write(SCI_VOL, mid_vol);
 }
