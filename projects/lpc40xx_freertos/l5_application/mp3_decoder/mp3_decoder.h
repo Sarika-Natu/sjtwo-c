@@ -26,10 +26,7 @@
 #define SCI_AICTRL2 0xE     // Application control register 2
 #define SCI_AICTRL3 0xF     // Application control register 3
 
-#define SONG_NAME_MAX_LENGTH 64
-typedef struct {
-  uint8_t item;
-  char name[SONG_NAME_MAX_LENGTH];
-} song_info_s;
-
 void mp3_init(void);
+bool mp3_dreq_get_status(void);
+void mp3_datacs(void);
+void mp3_datads(void);

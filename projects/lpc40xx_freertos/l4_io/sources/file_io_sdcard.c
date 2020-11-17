@@ -5,7 +5,7 @@
 
 FRESULT file_read(const char *filename, void *store_data_buffer, uint32_t bytes_to_read, UINT *bytes_read) {
   FRESULT result;
-    FIL file;
+  FIL file;
 
   result = f_open(&file, filename, FA_OPEN_EXISTING | FA_READ);
   if (FR_OK == result) {
@@ -13,7 +13,7 @@ FRESULT file_read(const char *filename, void *store_data_buffer, uint32_t bytes_
     result = f_read(&file, store_data_buffer, bytes_to_read, bytes_read);
     if (FR_OK == result) {
     } else {
-      printf("ERROR: Failed to write data to file\n");
+      printf("ERROR: Failed to read data from file\n");
     }
     f_close(&file);
   } else {
@@ -22,15 +22,15 @@ FRESULT file_read(const char *filename, void *store_data_buffer, uint32_t bytes_
   return result;
 }
 
-unsigned long file_read(const char *filename) {
-    unsigned long size_of_file = 0;
-    FIL file;
+unsigned long file_size(const char *filename) {
+  unsigned long size_of_file = 0;
+  FIL file;
 
-    FRESULT result = f_open(&file, filename, FA_OPEN_ALWAYS);
+  FRESULT result = f_open(&file, filename, FA_OPEN_ALWAYS);
 
-    if (FR_OK == result) {
-        size_of_file = f_size(&file);
-        f_close(&file);
-    }
-    return size_of_file;
+  if (FR_OK == result) {
+    size_of_file = f_size(&file);
+    f_close(&file);
+  }
+  return size_of_file;
 }

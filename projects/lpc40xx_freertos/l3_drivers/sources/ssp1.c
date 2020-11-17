@@ -2,12 +2,11 @@
 #include "lpc40xx.h"
 #include "lpc_peripherals.h"
 
-void ssp1__initialize(void) {
+void ssp1__initialize(uint32_t max_clock_hz) {
 
   const uint32_t frame_format = (0b00 << 4);
   const uint32_t data_size_8 = (0b111 << 0);
   const uint32_t ssp_enable = 0x02;
-  const uint32_t max_clock_hz = 48;
 
   lpc_peripheral__turn_on_power_to(LPC_PERIPHERAL__SSP1);
   LPC_SSP1->CR0 |= (data_size_8 | frame_format);
