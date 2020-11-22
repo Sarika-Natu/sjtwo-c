@@ -2,11 +2,14 @@
 #include "mp3_decoder.h"
 #include <stdio.h>
 
+#define MAX_BYTES_TX 32U
+//#define TEST
+
 static void mp3_configure_gpio(void);
 static void mp3_cs(void);
 static void mp3_ds(void);
-void mp3_datacs(void);
-void mp3_datads(void);
+static void mp3_datacs(void);
+static void mp3_datads(void);
 static void mp3_reset_high(void);
 static void mp3_reset_low(void);
 static void mp3_write(uint8_t opcode, uint16_t data);
@@ -17,6 +20,7 @@ static void mp3_setclockf(void);
 static void mp3_audata(void);
 static void mp3_bass(void);
 static void mp3_volume(void);
+static void mp3_pin_status(void);
 
 /*******************************************************************************
  *
@@ -25,12 +29,14 @@ static void mp3_volume(void);
  ******************************************************************************/
 
 void mp3_init(void) {
-  uint32_t spi_clock_mhz = 1 * 1000 * 1000;
+  uint32_t spi_clock_mhz = 12 * 1000 * 1000;
   ssp1__initialize(spi_clock_mhz);
 
   mp3_configure_gpio();
   mp3_hardware_init();
-  // mp3_pin_status();
+#ifdef TEST
+  mp3_pin_status();
+#endif
   mp3_setmode();
   mp3_setclockf();
   mp3_audata();
@@ -39,25 +45,9 @@ void mp3_init(void) {
 
   mp3_read_data(SCI_MODE);
   mp3_read_data(SCI_CLOCKF);
-  // mp3_pin_status();
-  spi_clock_mhz = spi_clock_mhz * 12;
-  ssp1__initialize(spi_clock_mhz);
-}
-
-void mp3_pin_status(void) {
-  const uint8_t mp3_datareq = 1;
-  const gpio_s mp3_datareq_gpio = {GPIO__PORT_0, mp3_datareq};
-  const uint8_t mp3_chipsel = 22;
-  const gpio_s mp3_chipsel_gpio = {GPIO__PORT_0, mp3_chipsel};
-  const uint8_t mp3_datacs = 0;
-  const gpio_s mp3_datacs_gpio = {GPIO__PORT_0, mp3_datacs};
-  const uint8_t mp3_reset = 18;
-  const gpio_s mp3_reset_gpio = {GPIO__PORT_0, mp3_reset};
-  printf("Get pin__mp3_cs status: %i\n", gpio__get(mp3_chipsel_gpio));
-  printf("Get pin__mp3_data_cs status: %i\n", gpio__get(mp3_datacs_gpio));
-  printf("Get pin__mp3_reset status: %i\n", gpio__get(mp3_reset_gpio));
-  printf("Get pin__mp3_dreq status: %i\n", gpio__get(mp3_datareq_gpio));
-  printf("\n");
+#ifdef TEST
+  mp3_pin_status();
+#endif
 }
 
 bool mp3_dreq_get_status(void) {
@@ -65,6 +55,19 @@ bool mp3_dreq_get_status(void) {
   const gpio_s mp3_datareq_gpio = {GPIO__PORT_0, mp3_datareq};
   bool dreq_status = gpio__get(mp3_datareq_gpio);
   return dreq_status;
+}
+
+void send_bytes_to_decoder(const uint32_t start_index, const uint8_t *bytes_to_send) {
+  mp3_datacs();
+  {
+    for (uint32_t index = start_index; index < (start_index + MAX_BYTES_TX); index++) {
+      ssp1__exchange_byte(bytes_to_send[index]);
+#ifdef TEST
+      printf("%ld. %d\n", index, bytes_to_send[index]);
+#endif
+    }
+  }
+  mp3_datads();
 }
 /*******************************************************************************
  *
@@ -125,6 +128,22 @@ static void mp3_reset_low(void) {
   gpio__reset(mp3_reset_gpio);
 }
 
+static void mp3_pin_status(void) {
+  const uint8_t mp3_datareq = 1;
+  const gpio_s mp3_datareq_gpio = {GPIO__PORT_0, mp3_datareq};
+  const uint8_t mp3_chipsel = 22;
+  const gpio_s mp3_chipsel_gpio = {GPIO__PORT_0, mp3_chipsel};
+  const uint8_t mp3_datacs = 0;
+  const gpio_s mp3_datacs_gpio = {GPIO__PORT_0, mp3_datacs};
+  const uint8_t mp3_reset = 18;
+  const gpio_s mp3_reset_gpio = {GPIO__PORT_0, mp3_reset};
+  printf("Get pin__mp3_cs status: %i\n", gpio__get(mp3_chipsel_gpio));
+  printf("Get pin__mp3_data_cs status: %i\n", gpio__get(mp3_datacs_gpio));
+  printf("Get pin__mp3_reset status: %i\n", gpio__get(mp3_reset_gpio));
+  printf("Get pin__mp3_dreq status: %i\n", gpio__get(mp3_datareq_gpio));
+  printf("\n");
+}
+
 static void mp3_write(uint8_t opcode, uint16_t data) {
   const uint8_t byte_mask = 0xFF;
   const uint8_t one_byte = 8;
@@ -138,8 +157,10 @@ static void mp3_write(uint8_t opcode, uint16_t data) {
     uint8_t data_msb = (byte_mask & (data >> one_byte));
     (void)ssp1__exchange_byte(data_msb);
     (void)ssp1__exchange_byte(data_lsb);
+#ifdef TEST
     printf("WRITE:    %.2x", data_msb);
     printf("    %.2x\n", data_lsb);
+#endif
   }
   mp3_ds();
 }
@@ -152,8 +173,10 @@ static uint16_t mp3_read_data(uint8_t opcode) {
   {
     (void)ssp1__exchange_byte(MP3_READ);
     (void)ssp1__exchange_byte(opcode);
+#ifdef TEST
     printf("READ: %.2x", ssp1__exchange_byte(0xFF));
     printf("%.2x\n", ssp1__exchange_byte(0xFF));
+#endif
   }
   mp3_ds();
 
@@ -193,7 +216,7 @@ static void mp3_audata(void) {
 }
 
 static void mp3_volume(void) {
-  const uint16_t mid_vol = 0x7F7F; // 0x0101;
+  const uint16_t mid_vol = 0x0101;
   mp3_write(SCI_VOL, mid_vol);
 }
 

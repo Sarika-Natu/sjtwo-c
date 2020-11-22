@@ -1,6 +1,6 @@
 #pragma once
 
-#include "file_io_sdcard.h"
+#include "delay.h"
 #include "gpio.h"
 #include "ssp1.h"
 #include <stdint.h>
@@ -28,5 +28,4 @@
 
 void mp3_init(void);
 bool mp3_dreq_get_status(void);
-void mp3_datacs(void);
-void mp3_datads(void);
+void send_bytes_to_decoder(const uint32_t start_index, const uint8_t *bytes_to_send);
